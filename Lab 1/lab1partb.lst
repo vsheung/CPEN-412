@@ -1,0 +1,355 @@
+680x0 MACRO ASSEMBLER   Version 5.00   (c) 1992-2005 Peter J. Fondse
+
+Date: 21 Oct 2020      Time: 16:49:15          Source: C:\USERS\VICTO\DOCUMENTS\ELEC4THYEAR\CPEN412\LABS\LAB1PARTB.SRC
+
+                       1          section   code
+                       2   **********************************************************************************************************
+                       3   * CSTART.ASM  -  C startup-code
+                       4   *
+                       5   *          Initialises the system prior to running the users main() program
+                       6   *
+                       7   *          1) Sets up the user program stack pointer
+                       8   *          2) Switches to User mode in the 68000
+                       9   *          3) Enables All Interrupts 1-7 on 68000
+                      10   *          4) Copies all initialised C program variables from Rom to Ram prior to running main()
+                      11   *
+                      12   **********************************************************************************************************
+00000000              13                   align
+                      14   
+                      15   
+                      16   **********************************************************************************************************
+                      17   * The Following ORG Statement marks the address of the start of the this CStart Program
+                      18   *
+                      19   * The debug Monitor and Flash Load and Program routines assume your program lives here
+                      20   **********************************************************************************************************
+08000000              21                   org       $08000000
+08000000  46FC 2000   22   start:          move.w    #$2000,SR             clear interrupts to enable all, move to supervisor mode
+                      23   
+                      24   ******************************************************************************************
+                      25   * Set unitialised global variables to 0 at startup
+                      26   ******************************************************************************************
+08000004  207C 0800   27   mainloop        movea.l   #BssStart,a0          point a0 to the start of the initialised data section held in ROM
+08000008  0192      
+0800000A  203C 0000   28                   move.l    #BssLength,d0         figure out how many bytes of C program variables data to copy
+0800000E  0008      
+08000010  6700 0024   29                   beq       go_main               if no data to copy go straight to program
+08000014  10FC 0000   30   Zeroinit        move.b    #0,(a0)+              copy the C program initialise variables from rom to ram
+08000018  5380        31                   subq.l    #1,d0
+0800001A  66F8        32                   bne       Zeroinit
+                      33   
+                      34   *******************************************************************************************
+                      35   * last minute initialisation before calling main
+                      36   *******************************************************************************************
+                      37   
+0800001C  23FC FFFF   38                   move.l    #-1,__ungetbuf         required for use of scanf() etc in C programs
+08000020  FFFF 0800 
+08000024  0186      
+08000026  42B9 0800   39                   clr.l     __allocp               used by malloc() in C
+0800002A  018A      
+0800002C  23FC 0800   40                   move.l    #heap,__heap           pointer to free memory
+08000030  019A 0800 
+08000034  018E      
+08000036  4EB9 0800   41   go_main         jsr       _main
+0800003A  0182      
+0800003C  60C2        42                   bra       start
+                      43   
+                      44   ; C:\M68KV6.0 - 800BY480\M68KV6.0 - 800BY480 - (VERILOG) FOR STUDENTS (2020)\PROGRAMS\DEBUGMONITORCODE\M68KUSERPROGRAM (DE1).C - Compiled by CC68K  Version 5.00 (c) 1991-2005  Peter J. Fondse
+                      45   ; #include <stdio.h>
+                      46   ; #include <string.h>
+                      47   ; #include <ctype.h>
+                      48   ; /*************************************************************
+                      49   ; ** SPI Controller registers
+                      50   ; **************************************************************/
+                      51   ; // SPI Registers
+                      52   ; #define SPI_Control         (*(volatile unsigned char *)(0x00408020))
+                      53   ; #define SPI_Status          (*(volatile unsigned char *)(0x00408022))
+                      54   ; #define SPI_Data            (*(volatile unsigned char *)(0x00408024))
+                      55   ; #define SPI_Ext             (*(volatile unsigned char *)(0x00408026))
+                      56   ; #define SPI_CS              (*(volatile unsigned char *)(0x00408028))
+                      57   ; // these two macros enable or disable the flash memory chip enable off SSN_O[7..0]
+                      58   ; // in this case we assume there is only 1 device connected to SSN_O[0] so we can
+                      59   ; // write hex FE to the SPI_CS to enable it (the enable on the flash chip is active low)
+                      60   ; // and write FF to disable it
+                      61   ; #define   Enable_SPI_CS()             SPI_CS = 0xFE
+                      62   ; #define   Disable_SPI_CS()            SPI_CS = 0xFF
+                      63   ; int a;
+                      64   ; int read;
+                      65   ; /******************************************************************************************
+                      66   ; ** The following code is for the SPI controller
+                      67   ; *******************************************************************************************/
+                      68   ; // return true if the SPI has finished transmitting a byte (to say the Flash chip) return false otherwise
+                      69   ; // this can be used in a polling algorithm to know when the controller is busy or idle.
+                      70   ; int TestForSPITransmitDataComplete(void)    {
+                      71   _TestForSPITransmitDataComplete:
+0800003E  4E56 FFFC   72          link      A6,#-4
+                      73   ; unsigned char * SPIF_7 = SPI_Status;
+08000042  1039 0040   74          move.b    4227106,D0
+08000046  8022      
+08000048  C0BC 0000   75          and.l     #255,D0
+0800004C  00FF      
+0800004E  2D40 FFFC   76          move.l    D0,-4(A6)
+                      77   ; if ((SPIF_7[0] &(1<<0) == 1))
+08000052  206E FFFC   78          move.l    -4(A6),A0
+08000056  1010        79          move.b    (A0),D0
+08000058  C0BC 0000   80          and.l     #255,D0
+0800005C  00FF      
+0800005E  C0BC 0000   81          and.l     #1,D0
+08000062  0001      
+08000064  6704        82          beq.s     TestForSPITransmitDataComplete_1
+                      83   ; return 1;
+08000066  7001        84          moveq     #1,D0
+08000068  6002        85          bra.s     TestForSPITransmitDataComplete_3
+                      86   TestForSPITransmitDataComplete_1:
+                      87   ; else
+                      88   ; return 0;
+0800006A  4280        89          clr.l     D0
+                      90   TestForSPITransmitDataComplete_3:
+0800006C  4E5E        91          unlk      A6
+0800006E  4E75        92          rts
+                      93   ; /* TODO replace 0 below with a test for status register SPIF bit and if set, return true */
+                      94   ; }
+                      95   ; /************************************************************************************
+                      96   ; ** initialises the SPI controller chip to set speed, interrupt capability etc.
+                      97   ; ************************************************************************************/
+                      98   ; void SPI_Init(void)
+                      99   ; {
+                     100   _SPI_Init:
+                     101   ; //TODO
+                     102   ; //
+                     103   ; // Program the SPI Control, EXT, CS and Status registers to initialise the SPI controller
+                     104   ; // Don't forget to call this routine from main() before you do anything else with SPI
+                     105   ; //
+                     106   ; // Here are some settings we want to create
+                     107   ; //
+                     108   ; // Control Reg     - interrupts disabled, core enabled, Master mode, Polarity and Phase of clock = [0,0], speed =  divide by 32 = approx 700Khz
+                     109   ; //char * SPI_Con = SPI_Control;
+                     110   ; //SPI_Con[0] = 0b11001111;
+                     111   ; SPI_Control = 0x67;//0b11001111;
+08000070  13FC 0067  112          move.b    #103,4227104
+08000074  0040 8020 
+                     113   ; // Ext Reg         - in conjunction with control reg, sets speed above and also sets interrupt flag after every completed transfer (each byte)
+                     114   ; //char * SPI_Exit = SPI_Ext;
+                     115   ; //SPI_Exit[0] = 0b00111100;
+                     116   ; SPI_Ext = 0x3C; //0b00111100;
+08000078  13FC 003C  117          move.b    #60,4227110
+0800007C  0040 8026 
+                     118   ; // SPI_CS Reg      - control selection of slave SPI chips via their CS# signals
+                     119   ; Enable_SPI_CS();
+08000080  13FC 00FE  120          move.b    #254,4227112
+08000084  0040 8028 
+                     121   ; // Status Reg      - status of SPI controller chip and used to clear any write collision and interrupt on transmit complete flag
+                     122   ; //char * SPI_Stat = SPI_Status;
+                     123   ; //SPI_Stat[0] = 0b11111111;
+                     124   ; SPI_Status = 0x00;//0b00000000;
+08000088  4239 0040  125          clr.b     4227106
+0800008C  8022      
+0800008E  4E75       126          rts
+                     127   ; }
+                     128   ; /************************************************************************************
+                     129   ; ** return ONLY when the SPI controller has finished transmitting a byte
+                     130   ; ************************************************************************************/
+                     131   ; void WaitForSPITransmitComplete(void)
+                     132   ; {
+                     133   _WaitForSPITransmitComplete:
+08000090  4E56 FFFC  134          link      A6,#-4
+                     135   ; // TODO : poll the status register SPIF bit looking for completion of transmission
+                     136   ; // once transmission is complete, clear the write collision and interrupt on transmit complete flags in the status register (read documentation)
+                     137   ; // just in case they were set
+                     138   ; int test;
+                     139   ; while(1){
+                     140   WaitForSPITransmitComplete_1:
+                     141   ; test = TestForSPITransmitDataComplete();
+08000094  4EB9 0800  142          jsr       _TestForSPITransmitDataComplete
+08000098  003E      
+0800009A  2D40 FFFC  143          move.l    D0,-4(A6)
+                     144   ; if (test == 1){
+0800009E  202E FFFC  145          move.l    -4(A6),D0
+080000A2  0C80 0000  146          cmp.l     #1,D0
+080000A6  0001      
+080000A8  660A       147          bne.s     WaitForSPITransmitComplete_4
+                     148   ; SPI_Status = 0xFF;
+080000AA  13FC 00FF  149          move.b    #255,4227106
+080000AE  0040 8022 
+                     150   ; return;
+080000B2  6002       151          bra.s     WaitForSPITransmitComplete_6
+                     152   WaitForSPITransmitComplete_4:
+080000B4  60DE       153          bra       WaitForSPITransmitComplete_1
+                     154   WaitForSPITransmitComplete_6:
+080000B6  4E5E       155          unlk      A6
+080000B8  4E75       156          rts
+                     157   ; }
+                     158   ; }
+                     159   ; }
+                     160   ; /************************************************************************************
+                     161   ; ** Write a byte to the SPI flash chip via the controller and returns (reads) whatever was
+                     162   ; ** given back by SPI device at the same time (removes the read byte from the FIFO)
+                     163   ; ************************************************************************************/
+                     164   ; int WriteSPIChar(int c)
+                     165   ; {
+                     166   _WriteSPIChar:
+080000BA  4E56 FFFC  167          link      A6,#-4
+                     168   ; int read_char;
+                     169   ; // todo - write the byte in parameter 'c' to the SPI data register, this will start it transmitting to the flash device
+                     170   ; SPI_Data = c;
+080000BE  202E 0008  171          move.l    8(A6),D0
+080000C2  13C0 0040  172          move.b    D0,4227108
+080000C6  8024      
+                     173   ; // wait for completion of transmission
+                     174   ; WaitForSPITransmitComplete();
+080000C8  4EB9 0800  175          jsr       _WaitForSPITransmitComplete
+080000CC  0090      
+                     176   ; // return the received data from Flash chip (which may not be relevent depending upon what we are doing)
+                     177   ; // by reading fom the SPI controller Data Register.
+                     178   ; // note however that in order to get data from an SPI slave device (e.g. flash) chip we have to write a dummy byte to it
+                     179   ; SPI_Data = 0x11; //Dummy
+080000CE  13FC 0011  180          move.b    #17,4227108
+080000D2  0040 8024 
+                     181   ; WaitForSPITransmitComplete();
+080000D6  4EB9 0800  182          jsr       _WaitForSPITransmitComplete
+080000DA  0090      
+                     183   ; read_char = SPI_Data;
+080000DC  1039 0040  184          move.b    4227108,D0
+080000E0  8024      
+080000E2  C0BC 0000  185          and.l     #255,D0
+080000E6  00FF      
+080000E8  2D40 FFFC  186          move.l    D0,-4(A6)
+                     187   ; //
+                     188   ; // modify '0' below to return back read byte from data register
+                     189   ; //
+                     190   ; return read_char;
+080000EC  202E FFFC  191          move.l    -4(A6),D0
+080000F0  4E5E       192          unlk      A6
+080000F2  4E75       193          rts
+                     194   ; }
+                     195   ; char xtod(int c)
+                     196   ; {
+                     197   _xtod:
+080000F4  4E56 0000  198          link      A6,#0
+080000F8  2F02       199          move.l    D2,-(A7)
+080000FA  242E 0008  200          move.l    8(A6),D2
+                     201   ; if ((char)(c) <= (char)('9'))
+080000FE  0C02 0039  202          cmp.b     #57,D2
+08000102  6E08       203          bgt.s     xtod_1
+                     204   ; return c - (char)(0x30);    // 0 - 9 = 0x30 - 0x39 so convert to number by sutracting 0x30
+08000104  1002       205          move.b    D2,D0
+08000106  0400 0030  206          sub.b     #48,D0
+0800010A  6014       207          bra.s     xtod_3
+                     208   xtod_1:
+                     209   ; else if((char)(c) > (char)('F'))    // assume lower case
+0800010C  0C02 0046  210          cmp.b     #70,D2
+08000110  6F08       211          ble.s     xtod_4
+                     212   ; return c - (char)(0x57);    // a-f = 0x61-66 so needs to be converted to 0x0A - 0x0F so subtract 0x57
+08000112  1002       213          move.b    D2,D0
+08000114  0400 0057  214          sub.b     #87,D0
+08000118  6006       215          bra.s     xtod_3
+                     216   xtod_4:
+                     217   ; else
+                     218   ; return c - (char)(0x37);    // A-F = 0x41-46 so needs to be converted to 0x0A - 0x0F so subtract 0x37
+0800011A  1002       219          move.b    D2,D0
+0800011C  0400 0037  220          sub.b     #55,D0
+                     221   xtod_3:
+08000120  241F       222          move.l    (A7)+,D2
+08000122  4E5E       223          unlk      A6
+08000124  4E75       224          rts
+                     225   ; }
+                     226   ; int Get2HexDigits(char *CheckSumPtr)
+                     227   ; {
+                     228   _Get2HexDigits:
+08000126  4E56 0000  229          link      A6,#0
+0800012A  2F02       230          move.l    D2,-(A7)
+                     231   ; register int i = (xtod(_getch()) << 4) | (xtod(_getch()));
+0800012C  2F00       232          move.l    D0,-(A7)
+                     233          jsr       __getch
+********  **** ****  Error: Undefined or illegal symbol
+08000134  2200       234          move.l    D0,D1
+08000136  201F       235          move.l    (A7)+,D0
+08000138  2F01       236          move.l    D1,-(A7)
+0800013A  4EB9 0800  237          jsr       _xtod
+0800013E  00F4      
+08000140  584F       238          addq.w    #4,A7
+08000142  C0BC 0000  239          and.l     #255,D0
+08000146  00FF      
+08000148  E980       240          asl.l     #4,D0
+0800014A  2F00       241          move.l    D0,-(A7)
+0800014C  2F01       242          move.l    D1,-(A7)
+                     243          jsr       __getch
+********  **** ****  Error: Undefined or illegal symbol
+08000154  221F       244          move.l    (A7)+,D1
+08000156  2F00       245          move.l    D0,-(A7)
+08000158  4EB9 0800  246          jsr       _xtod
+0800015C  00F4      
+0800015E  584F       247          addq.w    #4,A7
+08000160  2200       248          move.l    D0,D1
+08000162  201F       249          move.l    (A7)+,D0
+08000164  C2BC 0000  250          and.l     #255,D1
+08000168  00FF      
+0800016A  8081       251          or.l      D1,D0
+0800016C  2400       252          move.l    D0,D2
+                     253   ; if(CheckSumPtr)
+0800016E  4AAE 0008  254          tst.l     8(A6)
+08000172  6706       255          beq.s     Get2HexDigits_1
+                     256   ; *CheckSumPtr += i ;
+08000174  206E 0008  257          move.l    8(A6),A0
+08000178  D510       258          add.b     D2,(A0)
+                     259   Get2HexDigits_1:
+                     260   ; return i ;
+0800017A  2002       261          move.l    D2,D0
+0800017C  241F       262          move.l    (A7)+,D2
+0800017E  4E5E       263          unlk      A6
+08000180  4E75       264          rts
+                     265   ; }
+                     266   ; //Main function
+                     267   ; int main(){
+                     268   _main:
+                     269   ; //Variable to read from SPI register
+                     270   ; return 0;
+08000182  4280       271          clr.l     D0
+08000184  4E75       272          rts
+                     273   ; }
+                     274          section   const
+08000186             275                   align
+                     276   
+                     277   
+                     278          section   data
+08000186             279                   align
+                     280   
+                     281   *********************************************************************************************************************************************************
+                     282   * Section for Initialised Data (in theory should be copied to Ram at startup) but is part of program code as we copy whole program to ram at startup
+                     283   ********************************************************************************************************************************************************
+                     284   
+          0800 0186  285   DataStart       equ       *
+08000186             286   __ungetbuf:     ds.l      1                    ungetbuffer for stdio functions
+0800018A             287   __allocp:       ds.l      1                    start of free memory block list
+0800018E             288   __heap:         ds.l      1                    begin of free memory
+                     289   
+                     290   
+                     291          section   bss
+08000192             292                   align
+                     293   
+          0800 0192  294   DataEnd         equ       *                    this label will equate to the address of the last byte of global variable in it
+          0000 000C  295   DataLength      equ       DataEnd-DataStart    length of data needed to copy to Ram on bootup
+                     296   
+                     297   *********************************************************************************************************
+                     298   * Section for uninitialised Data which is set to zero, i.e. we should set this space to zero at starup
+                     299   *********************************************************************************************************
+          0800 0192  300   BssStart       equ       *
+                     301   
+                     302   _a:
+08000192             303          ds.b      4
+                     304   _read:
+08000196             305          ds.b      4
+                     306          section   heap
+0800019A             307                  align
+                     308   
+          0800 019A  309   BssEnd         equ       *
+          0000 0008  310   BssLength      equ       BssEnd-BssStart       length of zeroed data needed to copy to Ram on bootup
+                     311   
+                     312   *********************************************************************************************************
+                     313   * Section for Heap
+                     314   *********************************************************************************************************
+                     315   
+          0800 019A  316   heap           equ       *
+0800019A             317                  align
+          0800 0000
+
+Assembly errors: 2

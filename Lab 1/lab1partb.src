@@ -1,0 +1,317 @@
+       section   code
+**********************************************************************************************************
+* CSTART.ASM  -  C startup-code
+*
+*          Initialises the system prior to running the users main() program
+*
+*          1) Sets up the user program stack pointer
+*          2) Switches to User mode in the 68000
+*          3) Enables All Interrupts 1-7 on 68000
+*          4) Copies all initialised C program variables from Rom to Ram prior to running main()
+*
+**********************************************************************************************************
+                align
+
+
+**********************************************************************************************************
+* The Following ORG Statement marks the address of the start of the this CStart Program
+*
+* The debug Monitor and Flash Load and Program routines assume your program lives here
+**********************************************************************************************************
+                org       $08000000
+start:          move.w    #$2000,SR             clear interrupts to enable all, move to supervisor mode
+
+******************************************************************************************
+* Set unitialised global variables to 0 at startup
+******************************************************************************************
+mainloop        movea.l   #BssStart,a0          point a0 to the start of the initialised data section held in ROM
+                move.l    #BssLength,d0         figure out how many bytes of C program variables data to copy
+                beq       go_main               if no data to copy go straight to program
+Zeroinit        move.b    #0,(a0)+              copy the C program initialise variables from rom to ram
+                subq.l    #1,d0
+                bne       Zeroinit
+
+*******************************************************************************************
+* last minute initialisation before calling main
+*******************************************************************************************
+
+                move.l    #-1,__ungetbuf         required for use of scanf() etc in C programs
+                clr.l     __allocp               used by malloc() in C
+                move.l    #heap,__heap           pointer to free memory
+go_main         jsr       _main
+                bra       start
+
+; C:\M68KV6.0 - 800BY480\M68KV6.0 - 800BY480 - (VERILOG) FOR STUDENTS (2020)\PROGRAMS\DEBUGMONITORCODE\M68KUSERPROGRAM (DE1).C - Compiled by CC68K  Version 5.00 (c) 1991-2005  Peter J. Fondse
+; #include <stdio.h>
+; #include <string.h>
+; #include <ctype.h>
+; /*************************************************************
+; ** SPI Controller registers
+; **************************************************************/
+; // SPI Registers
+; #define SPI_Control         (*(volatile unsigned char *)(0x00408020))
+; #define SPI_Status          (*(volatile unsigned char *)(0x00408022))
+; #define SPI_Data            (*(volatile unsigned char *)(0x00408024))
+; #define SPI_Ext             (*(volatile unsigned char *)(0x00408026))
+; #define SPI_CS              (*(volatile unsigned char *)(0x00408028))
+; // these two macros enable or disable the flash memory chip enable off SSN_O[7..0]
+; // in this case we assume there is only 1 device connected to SSN_O[0] so we can
+; // write hex FE to the SPI_CS to enable it (the enable on the flash chip is active low)
+; // and write FF to disable it
+; #define   Enable_SPI_CS()             SPI_CS = 0xFE
+; #define   Disable_SPI_CS()            SPI_CS = 0xFF
+; int a;
+; int read;
+; /******************************************************************************************
+; ** The following code is for the SPI controller
+; *******************************************************************************************/
+; // return true if the SPI has finished transmitting a byte (to say the Flash chip) return false otherwise
+; // this can be used in a polling algorithm to know when the controller is busy or idle.
+; int TestForSPITransmitDataComplete(void)    {
+_TestForSPITransmitDataComplete:
+       link      A6,#-4
+; unsigned char * SPIF_7 = SPI_Status;
+       move.b    4227106,D0
+       and.l     #255,D0
+       move.l    D0,-4(A6)
+; if ((SPIF_7[0] &(1<<0) == 1))
+       move.l    -4(A6),A0
+       move.b    (A0),D0
+       and.l     #255,D0
+       and.l     #1,D0
+       beq.s     TestForSPITransmitDataComplete_1
+; return 1;
+       moveq     #1,D0
+       bra.s     TestForSPITransmitDataComplete_3
+TestForSPITransmitDataComplete_1:
+; else
+; return 0;
+       clr.l     D0
+TestForSPITransmitDataComplete_3:
+       unlk      A6
+       rts
+; /* TODO replace 0 below with a test for status register SPIF bit and if set, return true */
+; }
+; /************************************************************************************
+; ** initialises the SPI controller chip to set speed, interrupt capability etc.
+; ************************************************************************************/
+; void SPI_Init(void)
+; {
+_SPI_Init:
+; //TODO
+; //
+; // Program the SPI Control, EXT, CS and Status registers to initialise the SPI controller
+; // Don't forget to call this routine from main() before you do anything else with SPI
+; //
+; // Here are some settings we want to create
+; //
+; // Control Reg     - interrupts disabled, core enabled, Master mode, Polarity and Phase of clock = [0,0], speed =  divide by 32 = approx 700Khz
+; //char * SPI_Con = SPI_Control;
+; //SPI_Con[0] = 0b11001111;
+; SPI_Control = 0x67;//0b11001111;
+       move.b    #103,4227104
+; // Ext Reg         - in conjunction with control reg, sets speed above and also sets interrupt flag after every completed transfer (each byte)
+; //char * SPI_Exit = SPI_Ext;
+; //SPI_Exit[0] = 0b00111100;
+; SPI_Ext = 0x3C; //0b00111100;
+       move.b    #60,4227110
+; // SPI_CS Reg      - control selection of slave SPI chips via their CS# signals
+; Enable_SPI_CS();
+       move.b    #254,4227112
+; // Status Reg      - status of SPI controller chip and used to clear any write collision and interrupt on transmit complete flag
+; //char * SPI_Stat = SPI_Status;
+; //SPI_Stat[0] = 0b11111111;
+; SPI_Status = 0x00;//0b00000000;
+       clr.b     4227106
+       rts
+; }
+; /************************************************************************************
+; ** return ONLY when the SPI controller has finished transmitting a byte
+; ************************************************************************************/
+; void WaitForSPITransmitComplete(void)
+; {
+_WaitForSPITransmitComplete:
+       link      A6,#-4
+; // TODO : poll the status register SPIF bit looking for completion of transmission
+; // once transmission is complete, clear the write collision and interrupt on transmit complete flags in the status register (read documentation)
+; // just in case they were set
+; int test;
+; while(1){
+WaitForSPITransmitComplete_1:
+; test = TestForSPITransmitDataComplete();
+       jsr       _TestForSPITransmitDataComplete
+       move.l    D0,-4(A6)
+; if (test == 1){
+       move.l    -4(A6),D0
+       cmp.l     #1,D0
+       bne.s     WaitForSPITransmitComplete_4
+; SPI_Status = 0xFF;
+       move.b    #255,4227106
+; return;
+       bra.s     WaitForSPITransmitComplete_6
+WaitForSPITransmitComplete_4:
+       bra       WaitForSPITransmitComplete_1
+WaitForSPITransmitComplete_6:
+       unlk      A6
+       rts
+; }
+; }
+; }
+; /************************************************************************************
+; ** Write a byte to the SPI flash chip via the controller and returns (reads) whatever was
+; ** given back by SPI device at the same time (removes the read byte from the FIFO)
+; ************************************************************************************/
+; int WriteSPIChar(int c)
+; {
+_WriteSPIChar:
+       link      A6,#-4
+; int read_char;
+; // todo - write the byte in parameter 'c' to the SPI data register, this will start it transmitting to the flash device
+; SPI_Data = c;
+       move.l    8(A6),D0
+       move.b    D0,4227108
+; // wait for completion of transmission
+; WaitForSPITransmitComplete();
+       jsr       _WaitForSPITransmitComplete
+; // return the received data from Flash chip (which may not be relevent depending upon what we are doing)
+; // by reading fom the SPI controller Data Register.
+; // note however that in order to get data from an SPI slave device (e.g. flash) chip we have to write a dummy byte to it
+; SPI_Data = 0x11; //Dummy
+       move.b    #17,4227108
+; WaitForSPITransmitComplete();
+       jsr       _WaitForSPITransmitComplete
+; read_char = SPI_Data;
+       move.b    4227108,D0
+       and.l     #255,D0
+       move.l    D0,-4(A6)
+; //
+; // modify '0' below to return back read byte from data register
+; //
+; return read_char;
+       move.l    -4(A6),D0
+       unlk      A6
+       rts
+; }
+; char xtod(int c)
+; {
+_xtod:
+       link      A6,#0
+       move.l    D2,-(A7)
+       move.l    8(A6),D2
+; if ((char)(c) <= (char)('9'))
+       cmp.b     #57,D2
+       bgt.s     xtod_1
+; return c - (char)(0x30);    // 0 - 9 = 0x30 - 0x39 so convert to number by sutracting 0x30
+       move.b    D2,D0
+       sub.b     #48,D0
+       bra.s     xtod_3
+xtod_1:
+; else if((char)(c) > (char)('F'))    // assume lower case
+       cmp.b     #70,D2
+       ble.s     xtod_4
+; return c - (char)(0x57);    // a-f = 0x61-66 so needs to be converted to 0x0A - 0x0F so subtract 0x57
+       move.b    D2,D0
+       sub.b     #87,D0
+       bra.s     xtod_3
+xtod_4:
+; else
+; return c - (char)(0x37);    // A-F = 0x41-46 so needs to be converted to 0x0A - 0x0F so subtract 0x37
+       move.b    D2,D0
+       sub.b     #55,D0
+xtod_3:
+       move.l    (A7)+,D2
+       unlk      A6
+       rts
+; }
+; int Get2HexDigits(char *CheckSumPtr)
+; {
+_Get2HexDigits:
+       link      A6,#0
+       move.l    D2,-(A7)
+; register int i = (xtod(_getch()) << 4) | (xtod(_getch()));
+       move.l    D0,-(A7)
+       jsr       __getch
+       move.l    D0,D1
+       move.l    (A7)+,D0
+       move.l    D1,-(A7)
+       jsr       _xtod
+       addq.w    #4,A7
+       and.l     #255,D0
+       asl.l     #4,D0
+       move.l    D0,-(A7)
+       move.l    D1,-(A7)
+       jsr       __getch
+       move.l    (A7)+,D1
+       move.l    D0,-(A7)
+       jsr       _xtod
+       addq.w    #4,A7
+       move.l    D0,D1
+       move.l    (A7)+,D0
+       and.l     #255,D1
+       or.l      D1,D0
+       move.l    D0,D2
+; if(CheckSumPtr)
+       tst.l     8(A6)
+       beq.s     Get2HexDigits_1
+; *CheckSumPtr += i ;
+       move.l    8(A6),A0
+       add.b     D2,(A0)
+Get2HexDigits_1:
+; return i ;
+       move.l    D2,D0
+       move.l    (A7)+,D2
+       unlk      A6
+       rts
+; }
+; //Main function
+; int main(){
+_main:
+; //Variable to read from SPI register
+; return 0;
+       clr.l     D0
+       rts
+; }
+       section   const
+                align
+
+
+       section   data
+                align
+
+*********************************************************************************************************************************************************
+* Section for Initialised Data (in theory should be copied to Ram at startup) but is part of program code as we copy whole program to ram at startup
+********************************************************************************************************************************************************
+
+DataStart       equ       *
+__ungetbuf:     ds.l      1                    ungetbuffer for stdio functions
+__allocp:       ds.l      1                    start of free memory block list
+__heap:         ds.l      1                    begin of free memory
+
+
+       section   bss
+                align
+
+DataEnd         equ       *                    this label will equate to the address of the last byte of global variable in it
+DataLength      equ       DataEnd-DataStart    length of data needed to copy to Ram on bootup
+
+*********************************************************************************************************
+* Section for uninitialised Data which is set to zero, i.e. we should set this space to zero at starup
+*********************************************************************************************************
+BssStart       equ       *
+
+_a:
+       ds.b      4
+_read:
+       ds.b      4
+       section   heap
+               align
+
+BssEnd         equ       *
+BssLength      equ       BssEnd-BssStart       length of zeroed data needed to copy to Ram on bootup
+
+*********************************************************************************************************
+* Section for Heap
+*********************************************************************************************************
+
+heap           equ       *
+               align

@@ -1,0 +1,2854 @@
+680x0 MACRO ASSEMBLER   Version 5.00   (c) 1992-2005 Peter J. Fondse
+
+Date: 04 Dec 2020      Time: 16:11:10          Source: C:\USERS\VICTO\DOCUMENTS\ELEC4THYEAR\CPEN412\LABS\LAB6BCANBUS.SRC
+
+                       1          section   code
+                       2   **********************************************************************************************************
+                       3   * CSTART.ASM  -  C startup-code
+                       4   *
+                       5   *          Initialises the system prior to running the users main() program
+                       6   *
+                       7   *          1) Sets up the user program stack pointer
+                       8   *          2) Switches to User mode in the 68000
+                       9   *          3) Enables All Interrupts 1-7 on 68000
+                      10   *          4) Copies all initialised C program variables from Rom to Ram prior to running main()
+                      11   *
+                      12   **********************************************************************************************************
+00000000              13                   align
+                      14   
+                      15   
+                      16   **********************************************************************************************************
+                      17   * The Following ORG Statement marks the address of the start of the this CStart Program
+                      18   *
+                      19   * The debug Monitor and Flash Load and Program routines assume your program lives here
+                      20   **********************************************************************************************************
+08000000              21                   org       $08000000
+08000000  46FC 2000   22   start:          move.w    #$2000,SR             clear interrupts to enable all, move to supervisor mode
+                      23   
+                      24   ******************************************************************************************
+                      25   * Set unitialised global variables to 0 at startup
+                      26   ******************************************************************************************
+08000004  207C 0800   27   mainloop        movea.l   #BssStart,a0          point a0 to the start of the initialised data section held in ROM
+08000008  1520      
+0800000A  203C 0000   28                   move.l    #BssLength,d0         figure out how many bytes of C program variables data to copy
+0800000E  0010      
+08000010  6700 0024   29                   beq       go_main               if no data to copy go straight to program
+08000014  10FC 0000   30   Zeroinit        move.b    #0,(a0)+              copy the C program initialise variables from rom to ram
+08000018  5380        31                   subq.l    #1,d0
+0800001A  66F8        32                   bne       Zeroinit
+                      33   
+                      34   *******************************************************************************************
+                      35   * last minute initialisation before calling main
+                      36   *******************************************************************************************
+                      37   
+0800001C  23FC FFFF   38                   move.l    #-1,__ungetbuf         required for use of scanf() etc in C programs
+08000020  FFFF 0800 
+08000024  1508      
+08000026  42B9 0800   39                   clr.l     __allocp               used by malloc() in C
+0800002A  150C      
+0800002C  23FC 0800   40                   move.l    #heap,__heap           pointer to free memory
+08000030  1530 0800 
+08000034  1510      
+08000036  4EB9 0800   41   go_main         jsr       _main
+0800003A  07B0      
+0800003C  60C2        42                   bra       start
+                      43   
+                      44   ; C:\USERS\VICTO\DOWNLOADS\LAB5 84% COMPLETED.C - Compiled by CC68K  Version 5.00 (c) 1991-2005  Peter J. Fondse
+                      45   ; #include <Bios.h>
+                      46   ; //#include "DebugMonitor.h"
+                      47   ; /*********************************************************************************************
+                      48   ; ** These addresses and definitions were taken from Appendix 7 of the Can Controller
+                      49   ; ** application note and adapted for the 68k assignment
+                      50   ; *********************************************************************************************/
+                      51   ; /*
+                      52   ; ** definition for the SJA1000 registers and bits based on 68k address map areas
+                      53   ; ** assume the addresses for the 2 can controllers given in the assignment
+                      54   ; **
+                      55   ; ** Registers are defined in terms of the following Macro for each Can controller,
+                      56   ; ** where (i) represents an registers number
+                      57   ; */
+                      58   ; #define RS232_Control     *(volatile unsigned char *)(0x00400040)
+                      59   ; #define RS232_Status      *(volatile unsigned char *)(0x00400040)
+                      60   ; #define RS232_TxData      *(volatile unsigned char *)(0x00400042)
+                      61   ; #define RS232_RxData      *(volatile unsigned char *)(0x00400042)
+                      62   ; #define RS232_Baud        *(volatile unsigned char *)(0x00400044)
+                      63   ; #define CAN0_CONTROLLER(i) (*(volatile unsigned char *)(0x00500000 + (i << 1)))
+                      64   ; #define CAN1_CONTROLLER(i) (*(volatile unsigned char *)(0x00500200 + (i << 1)))
+                      65   ; /* Can 0 register definitions */
+                      66   ; #define Can0_ModeControlReg      CAN0_CONTROLLER(0)
+                      67   ; #define Can0_CommandReg          CAN0_CONTROLLER(1)
+                      68   ; #define Can0_StatusReg           CAN0_CONTROLLER(2)
+                      69   ; #define Can0_InterruptReg        CAN0_CONTROLLER(3)
+                      70   ; #define Can0_InterruptEnReg      CAN0_CONTROLLER(4) /* PeliCAN mode */
+                      71   ; #define Can0_BusTiming0Reg       CAN0_CONTROLLER(6)
+                      72   ; #define Can0_BusTiming1Reg       CAN0_CONTROLLER(7)
+                      73   ; #define Can0_OutControlReg       CAN0_CONTROLLER(8)
+                      74   ; /* address definitions of Other Registers */
+                      75   ; #define Can0_ArbLostCapReg       CAN0_CONTROLLER(11)
+                      76   ; #define Can0_ErrCodeCapReg       CAN0_CONTROLLER(12)
+                      77   ; #define Can0_ErrWarnLimitReg     CAN0_CONTROLLER(13)
+                      78   ; #define Can0_RxErrCountReg       CAN0_CONTROLLER(14)
+                      79   ; #define Can0_TxErrCountReg       CAN0_CONTROLLER(15)
+                      80   ; #define Can0_RxMsgCountReg       CAN0_CONTROLLER(29)
+                      81   ; #define Can0_RxBufStartAdr       CAN0_CONTROLLER(30)
+                      82   ; #define Can0_ClockDivideReg      CAN0_CONTROLLER(31)
+                      83   ; /* address definitions of Acceptance Code & Mask Registers - RESET MODE */
+                      84   ; #define Can0_AcceptCode0Reg      CAN0_CONTROLLER(16)
+                      85   ; #define Can0_AcceptCode1Reg      CAN0_CONTROLLER(17)
+                      86   ; #define Can0_AcceptCode2Reg      CAN0_CONTROLLER(18)
+                      87   ; #define Can0_AcceptCode3Reg      CAN0_CONTROLLER(19)
+                      88   ; #define Can0_AcceptMask0Reg      CAN0_CONTROLLER(20)
+                      89   ; #define Can0_AcceptMask1Reg      CAN0_CONTROLLER(21)
+                      90   ; #define Can0_AcceptMask2Reg      CAN0_CONTROLLER(22)
+                      91   ; #define Can0_AcceptMask3Reg      CAN0_CONTROLLER(23)
+                      92   ; /* address definitions Rx Buffer - OPERATING MODE - Read only register*/
+                      93   ; #define Can0_RxFrameInfo         CAN0_CONTROLLER(16)
+                      94   ; #define Can0_RxBuffer1           CAN0_CONTROLLER(17)
+                      95   ; #define Can0_RxBuffer2           CAN0_CONTROLLER(18)
+                      96   ; #define Can0_RxBuffer3           CAN0_CONTROLLER(19)
+                      97   ; #define Can0_RxBuffer4           CAN0_CONTROLLER(20)
+                      98   ; #define Can0_RxBuffer5           CAN0_CONTROLLER(21)
+                      99   ; #define Can0_RxBuffer6           CAN0_CONTROLLER(22)
+                     100   ; #define Can0_RxBuffer7           CAN0_CONTROLLER(23)
+                     101   ; #define Can0_RxBuffer8           CAN0_CONTROLLER(24)
+                     102   ; #define Can0_RxBuffer9           CAN0_CONTROLLER(25)
+                     103   ; #define Can0_RxBuffer10          CAN0_CONTROLLER(26)
+                     104   ; #define Can0_RxBuffer11          CAN0_CONTROLLER(27)
+                     105   ; #define Can0_RxBuffer12          CAN0_CONTROLLER(28)
+                     106   ; /* address definitions of the Tx-Buffer - OPERATING MODE - Write only register */
+                     107   ; #define Can0_TxFrameInfo         CAN0_CONTROLLER(16)
+                     108   ; #define Can0_TxBuffer1           CAN0_CONTROLLER(17)
+                     109   ; #define Can0_TxBuffer2           CAN0_CONTROLLER(18)
+                     110   ; #define Can0_TxBuffer3           CAN0_CONTROLLER(19)
+                     111   ; #define Can0_TxBuffer4           CAN0_CONTROLLER(20)
+                     112   ; #define Can0_TxBuffer5           CAN0_CONTROLLER(21)
+                     113   ; #define Can0_TxBuffer6           CAN0_CONTROLLER(22)
+                     114   ; #define Can0_TxBuffer7           CAN0_CONTROLLER(23)
+                     115   ; #define Can0_TxBuffer8           CAN0_CONTROLLER(24)
+                     116   ; #define Can0_TxBuffer9           CAN0_CONTROLLER(25)
+                     117   ; #define Can0_TxBuffer10          CAN0_CONTROLLER(26)
+                     118   ; #define Can0_TxBuffer11          CAN0_CONTROLLER(27)
+                     119   ; #define Can0_TxBuffer12          CAN0_CONTROLLER(28)
+                     120   ; /* read only addresses */
+                     121   ; #define Can0_TxFrameInfoRd       CAN0_CONTROLLER(96)
+                     122   ; #define Can0_TxBufferRd1         CAN0_CONTROLLER(97)
+                     123   ; #define Can0_TxBufferRd2         CAN0_CONTROLLER(98)
+                     124   ; #define Can0_TxBufferRd3         CAN0_CONTROLLER(99)
+                     125   ; #define Can0_TxBufferRd4         CAN0_CONTROLLER(100)
+                     126   ; #define Can0_TxBufferRd5         CAN0_CONTROLLER(101)
+                     127   ; #define Can0_TxBufferRd6         CAN0_CONTROLLER(102)
+                     128   ; #define Can0_TxBufferRd7         CAN0_CONTROLLER(103)
+                     129   ; #define Can0_TxBufferRd8         CAN0_CONTROLLER(104)
+                     130   ; #define Can0_TxBufferRd9         CAN0_CONTROLLER(105)
+                     131   ; #define Can0_TxBufferRd10        CAN0_CONTROLLER(106)
+                     132   ; #define Can0_TxBufferRd11        CAN0_CONTROLLER(107)
+                     133   ; #define Can0_TxBufferRd12        CAN0_CONTROLLER(108)
+                     134   ; /* CAN1 Controller register definitions */
+                     135   ; #define Can1_ModeControlReg      CAN1_CONTROLLER(0)
+                     136   ; #define Can1_CommandReg          CAN1_CONTROLLER(1)
+                     137   ; #define Can1_StatusReg           CAN1_CONTROLLER(2)
+                     138   ; #define Can1_InterruptReg        CAN1_CONTROLLER(3)
+                     139   ; #define Can1_InterruptEnReg      CAN1_CONTROLLER(4) /* PeliCAN mode */
+                     140   ; #define Can1_BusTiming0Reg       CAN1_CONTROLLER(6)
+                     141   ; #define Can1_BusTiming1Reg       CAN1_CONTROLLER(7)
+                     142   ; #define Can1_OutControlReg       CAN1_CONTROLLER(8)
+                     143   ; /* address definitions of Other Registers */
+                     144   ; #define Can1_ArbLostCapReg       CAN1_CONTROLLER(11)
+                     145   ; #define Can1_ErrCodeCapReg       CAN1_CONTROLLER(12)
+                     146   ; #define Can1_ErrWarnLimitReg     CAN1_CONTROLLER(13)
+                     147   ; #define Can1_RxErrCountReg       CAN1_CONTROLLER(14)
+                     148   ; #define Can1_TxErrCountReg       CAN1_CONTROLLER(15)
+                     149   ; #define Can1_RxMsgCountReg       CAN1_CONTROLLER(29)
+                     150   ; #define Can1_RxBufStartAdr       CAN1_CONTROLLER(30)
+                     151   ; #define Can1_ClockDivideReg      CAN1_CONTROLLER(31)
+                     152   ; /* address definitions of Acceptance Code & Mask Registers - RESET MODE */
+                     153   ; #define Can1_AcceptCode0Reg      CAN1_CONTROLLER(16)
+                     154   ; #define Can1_AcceptCode1Reg      CAN1_CONTROLLER(17)
+                     155   ; #define Can1_AcceptCode2Reg      CAN1_CONTROLLER(18)
+                     156   ; #define Can1_AcceptCode3Reg      CAN1_CONTROLLER(19)
+                     157   ; #define Can1_AcceptMask0Reg      CAN1_CONTROLLER(20)
+                     158   ; #define Can1_AcceptMask1Reg      CAN1_CONTROLLER(21)
+                     159   ; #define Can1_AcceptMask2Reg      CAN1_CONTROLLER(22)
+                     160   ; #define Can1_AcceptMask3Reg      CAN1_CONTROLLER(23)
+                     161   ; /* address definitions Rx Buffer - OPERATING MODE - Read only register*/
+                     162   ; #define Can1_RxFrameInfo         CAN1_CONTROLLER(16)
+                     163   ; #define Can1_RxBuffer1           CAN1_CONTROLLER(17)
+                     164   ; #define Can1_RxBuffer2           CAN1_CONTROLLER(18)
+                     165   ; #define Can1_RxBuffer3           CAN1_CONTROLLER(19)
+                     166   ; #define Can1_RxBuffer4           CAN1_CONTROLLER(20)
+                     167   ; #define Can1_RxBuffer5           CAN1_CONTROLLER(21)
+                     168   ; #define Can1_RxBuffer6           CAN1_CONTROLLER(22)
+                     169   ; #define Can1_RxBuffer7           CAN1_CONTROLLER(23)
+                     170   ; #define Can1_RxBuffer8           CAN1_CONTROLLER(24)
+                     171   ; #define Can1_RxBuffer9           CAN1_CONTROLLER(25)
+                     172   ; #define Can1_RxBuffer10          CAN1_CONTROLLER(26)
+                     173   ; #define Can1_RxBuffer11          CAN1_CONTROLLER(27)
+                     174   ; #define Can1_RxBuffer12          CAN1_CONTROLLER(28)
+                     175   ; /* address definitions of the Tx-Buffer - OPERATING MODE - Write only register */
+                     176   ; #define Can1_TxFrameInfo         CAN1_CONTROLLER(16)
+                     177   ; #define Can1_TxBuffer1           CAN1_CONTROLLER(17)
+                     178   ; #define Can1_TxBuffer2           CAN1_CONTROLLER(18)
+                     179   ; #define Can1_TxBuffer3           CAN1_CONTROLLER(19)
+                     180   ; #define Can1_TxBuffer4           CAN1_CONTROLLER(20)
+                     181   ; #define Can1_TxBuffer5           CAN1_CONTROLLER(21)
+                     182   ; #define Can1_TxBuffer6           CAN1_CONTROLLER(22)
+                     183   ; #define Can1_TxBuffer7           CAN1_CONTROLLER(23)
+                     184   ; #define Can1_TxBuffer8           CAN1_CONTROLLER(24)
+                     185   ; #define Can1_TxBuffer9           CAN1_CONTROLLER(25)
+                     186   ; #define Can1_TxBuffer10          CAN1_CONTROLLER(26)
+                     187   ; #define Can1_TxBuffer11          CAN1_CONTROLLER(27)
+                     188   ; #define Can1_TxBuffer12          CAN1_CONTROLLER(28)
+                     189   ; /* read only addresses */
+                     190   ; #define Can1_TxFrameInfoRd       CAN1_CONTROLLER(96)
+                     191   ; #define Can1_TxBufferRd1         CAN1_CONTROLLER(97)
+                     192   ; #define Can1_TxBufferRd2         CAN1_CONTROLLER(98)
+                     193   ; #define Can1_TxBufferRd3         CAN1_CONTROLLER(99)
+                     194   ; #define Can1_TxBufferRd4         CAN1_CONTROLLER(100)
+                     195   ; #define Can1_TxBufferRd5         CAN1_CONTROLLER(101)
+                     196   ; #define Can1_TxBufferRd6         CAN1_CONTROLLER(102)
+                     197   ; #define Can1_TxBufferRd7         CAN1_CONTROLLER(103)
+                     198   ; #define Can1_TxBufferRd8         CAN1_CONTROLLER(104)
+                     199   ; #define Can1_TxBufferRd9         CAN1_CONTROLLER(105)
+                     200   ; #define Can1_TxBufferRd10        CAN1_CONTROLLER(106)
+                     201   ; #define Can1_TxBufferRd11        CAN1_CONTROLLER(107)
+                     202   ; #define Can1_TxBufferRd12        CAN1_CONTROLLER(108)
+                     203   ; /* bit definitions for the Mode & Control Register */
+                     204   ; #define RM_RR_Bit 0x01 /* reset mode (request) bit */
+                     205   ; #define LOM_Bit 0x02 /* listen only mode bit */
+                     206   ; #define STM_Bit 0x04 /* self test mode bit */
+                     207   ; #define AFM_Bit 0x08 /* acceptance filter mode bit */
+                     208   ; #define SM_Bit  0x10 /* enter sleep mode bit */
+                     209   ; /* bit definitions for the Interrupt Enable & Control Register */
+                     210   ; #define RIE_Bit 0x01 /* receive interrupt enable bit */
+                     211   ; #define TIE_Bit 0x02 /* transmit interrupt enable bit */
+                     212   ; #define EIE_Bit 0x04 /* error warning interrupt enable bit */
+                     213   ; #define DOIE_Bit 0x08 /* data overrun interrupt enable bit */
+                     214   ; #define WUIE_Bit 0x10 /* wake-up interrupt enable bit */
+                     215   ; #define EPIE_Bit 0x20 /* error passive interrupt enable bit */
+                     216   ; #define ALIE_Bit 0x40 /* arbitration lost interr. enable bit*/
+                     217   ; #define BEIE_Bit 0x80 /* bus error interrupt enable bit */
+                     218   ; /* bit definitions for the Command Register */
+                     219   ; #define TR_Bit 0x01 /* transmission request bit */
+                     220   ; #define AT_Bit 0x02 /* abort transmission bit */
+                     221   ; #define RRB_Bit 0x04 /* release receive buffer bit */
+                     222   ; #define CDO_Bit 0x08 /* clear data overrun bit */
+                     223   ; #define SRR_Bit 0x10 /* self reception request bit */
+                     224   ; /* bit definitions for the Status Register */
+                     225   ; #define RBS_Bit 0x01 /* receive buffer status bit */
+                     226   ; #define DOS_Bit 0x02 /* data overrun status bit */
+                     227   ; #define TBS_Bit 0x04 /* transmit buffer status bit */
+                     228   ; #define TCS_Bit 0x08 /* transmission complete status bit */
+                     229   ; #define RS_Bit 0x10 /* receive status bit */
+                     230   ; #define TS_Bit 0x20 /* transmit status bit */
+                     231   ; #define ES_Bit 0x40 /* error status bit */
+                     232   ; #define BS_Bit 0x80 /* bus status bit */
+                     233   ; /* bit definitions for the Interrupt Register */
+                     234   ; #define RI_Bit 0x01 /* receive interrupt bit */
+                     235   ; #define TI_Bit 0x02 /* transmit interrupt bit */
+                     236   ; #define EI_Bit 0x04 /* error warning interrupt bit */
+                     237   ; #define DOI_Bit 0x08 /* data overrun interrupt bit */
+                     238   ; #define WUI_Bit 0x10 /* wake-up interrupt bit */
+                     239   ; #define EPI_Bit 0x20 /* error passive interrupt bit */
+                     240   ; #define ALI_Bit 0x40 /* arbitration lost interrupt bit */
+                     241   ; #define BEI_Bit 0x80 /* bus error interrupt bit */
+                     242   ; /* bit definitions for the Bus Timing Registers */
+                     243   ; #define SAM_Bit 0x80                        /* sample mode bit 1 == the bus is sampled 3 times, 0 == the bus is sampled once */
+                     244   ; /* bit definitions for the Output Control Register OCMODE1, OCMODE0 */
+                     245   ; #define BiPhaseMode 0x00 /* bi-phase output mode */
+                     246   ; #define NormalMode 0x02 /* normal output mode */
+                     247   ; #define ClkOutMode 0x03 /* clock output mode */
+                     248   ; /* output pin configuration for TX1 */
+                     249   ; #define OCPOL1_Bit 0x20 /* output polarity control bit */
+                     250   ; #define Tx1Float 0x00 /* configured as float */
+                     251   ; #define Tx1PullDn 0x40 /* configured as pull-down */
+                     252   ; #define Tx1PullUp 0x80 /* configured as pull-up */
+                     253   ; #define Tx1PshPull 0xC0 /* configured as push/pull */
+                     254   ; /* output pin configuration for TX0 */
+                     255   ; #define OCPOL0_Bit 0x04 /* output polarity control bit */
+                     256   ; #define Tx0Float 0x00 /* configured as float */
+                     257   ; #define Tx0PullDn 0x08 /* configured as pull-down */
+                     258   ; #define Tx0PullUp 0x10 /* configured as pull-up */
+                     259   ; #define Tx0PshPull 0x18 /* configured as push/pull */
+                     260   ; /* bit definitions for the Clock Divider Register */
+                     261   ; #define DivBy1 0x07 /* CLKOUT = oscillator frequency */
+                     262   ; #define DivBy2 0x00 /* CLKOUT = 1/2 oscillator frequency */
+                     263   ; #define ClkOff_Bit 0x08 /* clock off bit, control of the CLK OUT pin */
+                     264   ; #define RXINTEN_Bit 0x20 /* pin TX1 used for receive interrupt */
+                     265   ; #define CBP_Bit 0x40 /* CAN comparator bypass control bit */
+                     266   ; #define CANMode_Bit 0x80 /* CAN mode definition bit */
+                     267   ; /*- definition of used constants ---------------------------------------*/
+                     268   ; #define YES 1
+                     269   ; #define NO 0
+                     270   ; #define ENABLE 1
+                     271   ; #define DISABLE 0
+                     272   ; #define ENABLE_N 0
+                     273   ; #define DISABLE_N 1
+                     274   ; #define INTLEVELACT 0
+                     275   ; #define INTEDGEACT 1
+                     276   ; #define PRIORITY_LOW 0
+                     277   ; #define PRIORITY_HIGH 1
+                     278   ; /* default (reset) value for register content, clear register */
+                     279   ; #define ClrByte 0x00
+                     280   ; /* constant: clear Interrupt Enable Register */
+                     281   ; #define ClrIntEnSJA ClrByte
+                     282   ; /* definitions for the acceptance code and mask register */
+                     283   ; #define DontCare 0xFF
+                     284   ; //GLOBAL VARIABLE FOR COUNT
+                     285   ; int count;
+                     286   ; int ADC_val, Photo_val, Therm_val;
+                     287   ; //#define StartOfExceptionVectorTable 0x0B000000
+                     288   ; /*  bus timing values for
+                     289   ; **  bit-rate : 100 kBit/s
+                     290   ; **  oscillator frequency : 25 MHz, 1 sample per bit, 0 tolerance %
+                     291   ; **  maximum tolerated propagation delay : 4450 ns
+                     292   ; **  minimum requested propagation delay : 500 ns
+                     293   ; **
+                     294   ; **  https://www.kvaser.com/support/calculators/bit-timing-calculator/
+                     295   ; **  T1 	T2 	BTQ 	SP% 	SJW 	BIT RATE 	ERR% 	BTR0 	BTR1
+                     296   ; **  17	8	25	    68	     1	      100	    0	      04	7f
+                     297   ; */
+                     298   ; void InstallExceptionHandler( void (*function_ptr)(), int level)
+                     299   ; {
+                     300   _InstallExceptionHandler:
+0800003E  4E56 FFFC  301          link      A6,#-4
+                     302   ; volatile long int *RamVectorAddress = (volatile long int *)(StartOfExceptionVectorTable) ;   // pointer to the Ram based interrupt vector table created in Cstart in debug monitor
+08000042  2D7C 0803  303          move.l    #134414336,-4(A6)
+08000046  0000 FFFC 
+                     304   ; RamVectorAddress[level] = (long int *)(function_ptr);                       // install the address of our function into the exception table
+0800004A  206E FFFC  305          move.l    -4(A6),A0
+0800004E  202E 000C  306          move.l    12(A6),D0
+08000052  E588       307          lsl.l     #2,D0
+08000054  21AE 0008  308          move.l    8(A6),0(A0,D0.L)
+08000058  0800      
+0800005A  4E5E       309          unlk      A6
+0800005C  4E75       310          rts
+                     311   ; }
+                     312   ; void Timer2_Reset(void)
+                     313   ; {
+                     314   _Timer2_Reset:
+                     315   ; if(Timer2Status == 1) {       // Did Timer 2 produce the Interrupt?
+0800005E  1039 0040  316          move.b    4194358,D0
+08000062  0036      
+08000064  0C00 0001  317          cmp.b     #1,D0
+08000068  6608       318          bne.s     Timer2_Reset_1
+                     319   ; Timer2Control = 3;      	// if so clear interrupt and restart timer
+0800006A  13FC 0003  320          move.b    #3,4194358
+0800006E  0040 0036 
+                     321   Timer2_Reset_1:
+08000072  4E75       322          rts
+                     323   ; }
+                     324   ; }
+                     325   ; void Timer2_Init(void)
+                     326   ; {
+                     327   _Timer2_Init:
+                     328   ; Timer2Data = 0x25;		// program 100ms delay
+08000074  13FC 0025  329          move.b    #37,4194356
+08000078  0040 0034 
+                     330   ; /*
+                     331   ; ** timer driven off 25Mhz clock so program value so that it counts down in 0.01 secs
+                     332   ; ** the example 0x03 above is loaded into top 8 bits of a 24 bit timer so reads as
+                     333   ; ** 0x03FFFF a value of 0x03 would be 262,143/25,000,000, so is close to 1/100th sec
+                     334   ; **
+                     335   ; **
+                     336   ; ** Now write binary 00000011 to timer control register:
+                     337   ; **	Bit0 = 1 (enable interrupt from that timer)
+                     338   ; **	Bit 1 = 1 enable counting
+                     339   ; */
+                     340   ; Timer2Control = 3;
+0800007C  13FC 0003  341          move.b    #3,4194358
+08000080  0040 0036 
+08000084  4E75       342          rts
+                     343   ; }
+                     344   ; /*********************************************************************************************
+                     345   ; *Subroutine to initialise the RS232 Port by writing some commands to the internal registers
+                     346   ; *********************************************************************************************/
+                     347   ; void Init_RS232(void)
+                     348   ; {
+                     349   _Init_RS232:
+                     350   ; RS232_Control = (char)(0x15) ; //  %00010101    divide by 16 clock, set rts low, 8 bits no parity, 1 stop bit transmitter interrupt disabled
+08000086  13FC 0015  351          move.b    #21,4194368
+0800008A  0040 0040 
+                     352   ; RS232_Baud = (char)(0x1) ;      // program baud rate generator 000 = 230k, 001 = 115k, 010 = 57.6k, 011 = 38.4k, 100 = 19.2, all others = 9600
+0800008E  13FC 0001  353          move.b    #1,4194372
+08000092  0040 0044 
+08000096  4E75       354          rts
+                     355   ; }
+                     356   ; int kbhit(void)
+                     357   ; {
+                     358   _kbhit:
+                     359   ; if(((char)(RS232_Status) & (char)(0x01)) == (char)(0x01))    // wait for Rx bit in status register to be '1'
+08000098  1039 0040  360          move.b    4194368,D0
+0800009C  0040      
+0800009E  C03C 0001  361          and.b     #1,D0
+080000A2  0C00 0001  362          cmp.b     #1,D0
+080000A6  6604       363          bne.s     kbhit_1
+                     364   ; return 1 ;
+080000A8  7001       365          moveq     #1,D0
+080000AA  6002       366          bra.s     kbhit_3
+                     367   kbhit_1:
+                     368   ; else
+                     369   ; return 0 ;
+080000AC  4280       370          clr.l     D0
+                     371   kbhit_3:
+080000AE  4E75       372          rts
+                     373   ; }
+                     374   ; /*********************************************************************************************************
+                     375   ; **  Subroutine to provide a low level output function to 6850 ACIA
+                     376   ; **  This routine provides the basic functionality to output a single character to the serial Port
+                     377   ; **  to allow the board to communicate with HyperTerminal Program
+                     378   ; **
+                     379   ; **  NOTE you do not call this function directly, instead you call the normal putchar() function
+                     380   ; **  which in turn calls _putch() below). Other functions like puts(), printf() call putchar() so will
+                     381   ; **  call _putch() also
+                     382   ; *********************************************************************************************************/
+                     383   ; int _putch( int c)
+                     384   ; {
+                     385   __putch:
+080000B0  4E56 0000  386          link      A6,#0
+                     387   ; while(((char)(RS232_Status) & (char)(0x02)) != (char)(0x02))    // wait for Tx bit in status register or 6850 serial comms chip to be '1'
+                     388   _putch_1:
+080000B4  1039 0040  389          move.b    4194368,D0
+080000B8  0040      
+080000BA  C03C 0002  390          and.b     #2,D0
+080000BE  0C00 0002  391          cmp.b     #2,D0
+080000C2  6702       392          beq.s     _putch_3
+080000C4  60EE       393          bra       _putch_1
+                     394   _putch_3:
+                     395   ; ;
+                     396   ; (char)(RS232_TxData) = ((char)(c) & (char)(0x7f));                      // write to the data register to output the character (mask off bit 8 to keep it 7 bit ASCII)
+080000C6  202E 0008  397          move.l    8(A6),D0
+080000CA  C03C 007F  398          and.b     #127,D0
+080000CE  13C0 0040  399          move.b    D0,4194370
+080000D2  0042      
+                     400   ; return c ;                                              // putchar() expects the character to be returned
+080000D4  202E 0008  401          move.l    8(A6),D0
+080000D8  4E5E       402          unlk      A6
+080000DA  4E75       403          rts
+                     404   ; }
+                     405   ; /*********************************************************************************************************
+                     406   ; **  Subroutine to provide a low level input function to 6850 ACIA
+                     407   ; **  This routine provides the basic functionality to input a single character from the serial Port
+                     408   ; **  to allow the board to communicate with HyperTerminal Program Keyboard (your PC)
+                     409   ; **
+                     410   ; **  NOTE you do not call this function directly, instead you call the normal _getch() function
+                     411   ; **  which in turn calls _getch() below). Other functions like gets(), scanf() call _getch() so will
+                     412   ; **  call _getch() also
+                     413   ; *********************************************************************************************************/
+                     414   ; int _getch( void )
+                     415   ; {
+                     416   __getch:
+080000DC  2F02       417          move.l    D2,-(A7)
+                     418   ; int c ;
+                     419   ; while(((char)(RS232_Status) & (char)(0x01)) != (char)(0x01))    // wait for Rx bit in 6850 serial comms chip status register to be '1'
+                     420   _getch_1:
+080000DE  1039 0040  421          move.b    4194368,D0
+080000E2  0040      
+080000E4  C03C 0001  422          and.b     #1,D0
+080000E8  0C00 0001  423          cmp.b     #1,D0
+080000EC  6702       424          beq.s     _getch_3
+080000EE  60EE       425          bra       _getch_1
+                     426   _getch_3:
+                     427   ; ;
+                     428   ; c = (RS232_RxData & (char)(0x7f));                   // read received character, mask off top bit and return as 7 bit ASCII character
+080000F0  1039 0040  429          move.b    4194370,D0
+080000F4  0042      
+080000F6  C0BC 0000  430          and.l     #255,D0
+080000FA  00FF      
+080000FC  C0BC 0000  431          and.l     #127,D0
+08000100  007F      
+08000102  2400       432          move.l    D0,D2
+                     433   ; // shall we echo the character? Echo is set to TRUE at reset, but for speed we don't want to echo when downloading code with the 'L' debugger command
+                     434   ; if(1)
+                     435   ; _putch(c);
+08000104  2F02       436          move.l    D2,-(A7)
+08000106  4EB9 0800  437          jsr       __putch
+0800010A  00B0      
+0800010C  584F       438          addq.w    #4,A7
+                     439   ; return c ;
+0800010E  2002       440          move.l    D2,D0
+08000110  241F       441          move.l    (A7)+,D2
+08000112  4E75       442          rts
+                     443   ; }
+                     444   ; // flush the input stream for any unread characters
+                     445   ; void FlushKeyboard(void)
+                     446   ; {
+                     447   _FlushKeyboard:
+08000114  4E56 FFFC  448          link      A6,#-4
+                     449   ; char c ;
+                     450   ; while(1)    {
+                     451   FlushKeyboard_1:
+                     452   ; if(((char)(RS232_Status) & (char)(0x01)) == (char)(0x01))    // if Rx bit in status register is '1'
+08000118  1039 0040  453          move.b    4194368,D0
+0800011C  0040      
+0800011E  C03C 0001  454          and.b     #1,D0
+08000122  0C00 0001  455          cmp.b     #1,D0
+08000126  6610       456          bne.s     FlushKeyboard_4
+                     457   ; c = ((char)(RS232_RxData) & (char)(0x7f)) ;
+08000128  1039 0040  458          move.b    4194370,D0
+0800012C  0042      
+0800012E  C03C 007F  459          and.b     #127,D0
+08000132  1D40 FFFF  460          move.b    D0,-1(A6)
+08000136  6002       461          bra.s     FlushKeyboard_5
+                     462   FlushKeyboard_4:
+                     463   ; else
+                     464   ; return ;
+08000138  6002       465          bra.s     FlushKeyboard_6
+                     466   FlushKeyboard_5:
+0800013A  60DC       467          bra       FlushKeyboard_1
+                     468   FlushKeyboard_6:
+0800013C  4E5E       469          unlk      A6
+0800013E  4E75       470          rts
+                     471   ; }
+                     472   ; }
+                     473   ; // converts hex char to 4 bit binary equiv in range 0000-1111 (0-F)
+                     474   ; // char assumed to be a valid hex char 0-9, a-f, A-F
+                     475   ; char xtod(int c)
+                     476   ; {
+                     477   _xtod:
+08000140  4E56 0000  478          link      A6,#0
+08000144  2F02       479          move.l    D2,-(A7)
+08000146  242E 0008  480          move.l    8(A6),D2
+                     481   ; if ((char)(c) <= (char)('9'))
+0800014A  0C02 0039  482          cmp.b     #57,D2
+0800014E  6E08       483          bgt.s     xtod_1
+                     484   ; return c - (char)(0x30);    // 0 - 9 = 0x30 - 0x39 so convert to number by sutracting 0x30
+08000150  1002       485          move.b    D2,D0
+08000152  0400 0030  486          sub.b     #48,D0
+08000156  6014       487          bra.s     xtod_3
+                     488   xtod_1:
+                     489   ; else if((char)(c) > (char)('F'))    // assume lower case
+08000158  0C02 0046  490          cmp.b     #70,D2
+0800015C  6F08       491          ble.s     xtod_4
+                     492   ; return c - (char)(0x57);    // a-f = 0x61-66 so needs to be converted to 0x0A - 0x0F so subtract 0x57
+0800015E  1002       493          move.b    D2,D0
+08000160  0400 0057  494          sub.b     #87,D0
+08000164  6006       495          bra.s     xtod_3
+                     496   xtod_4:
+                     497   ; else
+                     498   ; return c - (char)(0x37);    // A-F = 0x41-46 so needs to be converted to 0x0A - 0x0F so subtract 0x37
+08000166  1002       499          move.b    D2,D0
+08000168  0400 0037  500          sub.b     #55,D0
+                     501   xtod_3:
+0800016C  241F       502          move.l    (A7)+,D2
+0800016E  4E5E       503          unlk      A6
+08000170  4E75       504          rts
+                     505   ; }
+                     506   ; int Get2HexDigits(char *CheckSumPtr)
+                     507   ; {
+                     508   _Get2HexDigits:
+08000172  4E56 0000  509          link      A6,#0
+08000176  2F02       510          move.l    D2,-(A7)
+                     511   ; register int i = (xtod(_getch()) << 4) | (xtod(_getch()));
+08000178  2F00       512          move.l    D0,-(A7)
+0800017A  4EB9 0800  513          jsr       __getch
+0800017E  00DC      
+08000180  2200       514          move.l    D0,D1
+08000182  201F       515          move.l    (A7)+,D0
+08000184  2F01       516          move.l    D1,-(A7)
+08000186  4EB9 0800  517          jsr       _xtod
+0800018A  0140      
+0800018C  584F       518          addq.w    #4,A7
+0800018E  C0BC 0000  519          and.l     #255,D0
+08000192  00FF      
+08000194  E980       520          asl.l     #4,D0
+08000196  2F00       521          move.l    D0,-(A7)
+08000198  2F01       522          move.l    D1,-(A7)
+0800019A  4EB9 0800  523          jsr       __getch
+0800019E  00DC      
+080001A0  221F       524          move.l    (A7)+,D1
+080001A2  2F00       525          move.l    D0,-(A7)
+080001A4  4EB9 0800  526          jsr       _xtod
+080001A8  0140      
+080001AA  584F       527          addq.w    #4,A7
+080001AC  2200       528          move.l    D0,D1
+080001AE  201F       529          move.l    (A7)+,D0
+080001B0  C2BC 0000  530          and.l     #255,D1
+080001B4  00FF      
+080001B6  8081       531          or.l      D1,D0
+080001B8  2400       532          move.l    D0,D2
+                     533   ; if(CheckSumPtr)
+080001BA  4AAE 0008  534          tst.l     8(A6)
+080001BE  6706       535          beq.s     Get2HexDigits_1
+                     536   ; *CheckSumPtr += i ;
+080001C0  206E 0008  537          move.l    8(A6),A0
+080001C4  D510       538          add.b     D2,(A0)
+                     539   Get2HexDigits_1:
+                     540   ; return i ;
+080001C6  2002       541          move.l    D2,D0
+080001C8  241F       542          move.l    (A7)+,D2
+080001CA  4E5E       543          unlk      A6
+080001CC  4E75       544          rts
+                     545   ; }
+                     546   ; int Get4HexDigits(char* CheckSumPtr)
+                     547   ; {
+                     548   _Get4HexDigits:
+080001CE  4E56 0000  549          link      A6,#0
+                     550   ; return (Get2HexDigits(CheckSumPtr) << 8) | (Get2HexDigits(CheckSumPtr));
+080001D2  2F2E 0008  551          move.l    8(A6),-(A7)
+080001D6  4EB9 0800  552          jsr       _Get2HexDigits
+080001DA  0172      
+080001DC  584F       553          addq.w    #4,A7
+080001DE  E180       554          asl.l     #8,D0
+080001E0  2F00       555          move.l    D0,-(A7)
+080001E2  2F2E 0008  556          move.l    8(A6),-(A7)
+080001E6  4EB9 0800  557          jsr       _Get2HexDigits
+080001EA  0172      
+080001EC  584F       558          addq.w    #4,A7
+080001EE  2200       559          move.l    D0,D1
+080001F0  201F       560          move.l    (A7)+,D0
+080001F2  8081       561          or.l      D1,D0
+080001F4  4E5E       562          unlk      A6
+080001F6  4E75       563          rts
+                     564   ; }
+                     565   ; int Get6HexDigits(char* CheckSumPtr)
+                     566   ; {
+                     567   _Get6HexDigits:
+080001F8  4E56 0000  568          link      A6,#0
+                     569   ; return (Get4HexDigits(CheckSumPtr) << 8) | (Get2HexDigits(CheckSumPtr));
+080001FC  2F2E 0008  570          move.l    8(A6),-(A7)
+08000200  4EB9 0800  571          jsr       _Get4HexDigits
+08000204  01CE      
+08000206  584F       572          addq.w    #4,A7
+08000208  E180       573          asl.l     #8,D0
+0800020A  2F00       574          move.l    D0,-(A7)
+0800020C  2F2E 0008  575          move.l    8(A6),-(A7)
+08000210  4EB9 0800  576          jsr       _Get2HexDigits
+08000214  0172      
+08000216  584F       577          addq.w    #4,A7
+08000218  2200       578          move.l    D0,D1
+0800021A  201F       579          move.l    (A7)+,D0
+0800021C  8081       580          or.l      D1,D0
+0800021E  4E5E       581          unlk      A6
+08000220  4E75       582          rts
+                     583   ; }
+                     584   ; int Get8HexDigits(char* CheckSumPtr)
+                     585   ; {
+                     586   _Get8HexDigits:
+08000222  4E56 0000  587          link      A6,#0
+                     588   ; return (Get4HexDigits(CheckSumPtr) << 16) | (Get4HexDigits(CheckSumPtr));
+08000226  2F2E 0008  589          move.l    8(A6),-(A7)
+0800022A  4EB9 0800  590          jsr       _Get4HexDigits
+0800022E  01CE      
+08000230  584F       591          addq.w    #4,A7
+08000232  E180       592          asl.l     #8,D0
+08000234  E180       593          asl.l     #8,D0
+08000236  2F00       594          move.l    D0,-(A7)
+08000238  2F2E 0008  595          move.l    8(A6),-(A7)
+0800023C  4EB9 0800  596          jsr       _Get4HexDigits
+08000240  01CE      
+08000242  584F       597          addq.w    #4,A7
+08000244  2200       598          move.l    D0,D1
+08000246  201F       599          move.l    (A7)+,D0
+08000248  8081       600          or.l      D1,D0
+0800024A  4E5E       601          unlk      A6
+0800024C  4E75       602          rts
+                     603   ; }
+                     604   ; // initialisation for Can controller 0
+                     605   ; void Init_CanBus_Controller0(void)
+                     606   ; {
+                     607   _Init_CanBus_Controller0:
+                     608   ; // TODO - put your Canbus initialisation code for CanController 0 here
+                     609   ; // See section 4.2.1 in the application note for details (PELICAN MODE)
+                     610   ; /* disable interrupts, if used (not necessary after power-on) */
+                     611   ; // EA = DISABLE; /* disable all interrupts */
+                     612   ; Can0_InterruptEnReg = DISABLE; /* disable external interrupt from SJA1000 */
+0800024E  4239 0050  613          clr.b     5242888
+08000252  0008      
+                     614   ; /* set reset mode/request (Note: after power-on SJA1000 is in BasicCAN mode)
+                     615   ; leave loop after a time out and signal an error */
+                     616   ; while((Can0_ModeControlReg & RM_RR_Bit ) == ClrByte)
+                     617   Init_CanBus_Controller0_1:
+08000254  1039 0050  618          move.b    5242880,D0
+08000258  0000      
+0800025A  C03C 0001  619          and.b     #1,D0
+0800025E  6612       620          bne.s     Init_CanBus_Controller0_3
+                     621   ; {
+                     622   ; /* other bits than the reset mode/request bit are unchanged */
+                     623   ; Can0_ModeControlReg = Can0_ModeControlReg | RM_RR_Bit ;
+08000260  1039 0050  624          move.b    5242880,D0
+08000264  0000      
+08000266  803C 0001  625          or.b      #1,D0
+0800026A  13C0 0050  626          move.b    D0,5242880
+0800026E  0000      
+08000270  60E2       627          bra       Init_CanBus_Controller0_1
+                     628   Init_CanBus_Controller0_3:
+                     629   ; }
+                     630   ; /* set the Clock Divider Register according to the given hardware of Figure 3
+                     631   ; select PeliCAN mode
+                     632   ; bypass CAN input comparator as external transceiver is used
+                     633   ; select the clock for the controller S87C654 */
+                     634   ; Can0_ClockDivideReg = CANMode_Bit | CBP_Bit | DivBy2;
+08000272  13FC 00C0  635          move.b    #192,5242942
+08000276  0050 003E 
+                     636   ; /* disable CAN interrupts, if required (always necessary after power-on)
+                     637   ; (write to SJA1000 Interrupt Enable / Control Register) */
+                     638   ; Can0_InterruptEnReg = ClrIntEnSJA;
+0800027A  4239 0050  639          clr.b     5242888
+0800027E  0008      
+                     640   ; /* define acceptance code and mask */
+                     641   ; Can0_AcceptCode0Reg = ClrByte;
+08000280  4239 0050  642          clr.b     5242912
+08000284  0020      
+                     643   ; Can0_AcceptCode1Reg = ClrByte;
+08000286  4239 0050  644          clr.b     5242914
+0800028A  0022      
+                     645   ; Can0_AcceptCode2Reg = ClrByte;
+0800028C  4239 0050  646          clr.b     5242916
+08000290  0024      
+                     647   ; Can0_AcceptCode3Reg = ClrByte;
+08000292  4239 0050  648          clr.b     5242918
+08000296  0026      
+                     649   ; Can0_AcceptMask0Reg = DontCare; /* every identifier is accepted */
+08000298  13FC 00FF  650          move.b    #255,5242920
+0800029C  0050 0028 
+                     651   ; Can0_AcceptMask1Reg = DontCare; /* every identifier is accepted */
+080002A0  13FC 00FF  652          move.b    #255,5242922
+080002A4  0050 002A 
+                     653   ; Can0_AcceptMask2Reg = DontCare; /* every identifier is accepted */
+080002A8  13FC 00FF  654          move.b    #255,5242924
+080002AC  0050 002C 
+                     655   ; Can0_AcceptMask3Reg = DontCare; /* every identifier is accepted */
+080002B0  13FC 00FF  656          move.b    #255,5242926
+080002B4  0050 002E 
+                     657   ; /* configure bus timing */
+                     658   ; /* Values are given to us*/
+                     659   ; Can0_BusTiming0Reg = 0x04;
+080002B8  13FC 0004  660          move.b    #4,5242892
+080002BC  0050 000C 
+                     661   ; Can0_BusTiming1Reg = 0x7f;
+080002C0  13FC 007F  662          move.b    #127,5242894
+080002C4  0050 000E 
+                     663   ; /* configure CAN outputs: float on TX1, Push/Pull on TX0,
+                     664   ; normal output mode */
+                     665   ; Can0_OutControlReg = Tx1Float | Tx0PshPull | NormalMode;
+080002C8  13FC 001A  666          move.b    #26,5242896
+080002CC  0050 0010 
+                     667   ; /* leave the reset mode/request i.e. switch to operating mode,
+                     668   ; the interrupts of the S87C654 are enabled
+                     669   ; but not the CAN interrupts of the SJA1000, which can be done separately
+                     670   ; for the different tasks in a system */
+                     671   ; /* clear Reset Mode bit, select dual Acceptance Filter Mode,
+                     672   ; switch off Self Test Mode and Listen Only Mode,
+                     673   ; clear Sleep Mode (wake up) */
+                     674   ; do /* wait until RM_RR_Bit is cleared */
+                     675   Init_CanBus_Controller0_4:
+                     676   ; /* break loop after a time out and signal an error */
+                     677   ; {
+                     678   ; Can0_ModeControlReg = ClrByte;
+080002D0  4239 0050  679          clr.b     5242880
+080002D4  0000      
+080002D6  1039 0050  680          move.b    5242880,D0
+080002DA  0000      
+080002DC  C03C 0001  681          and.b     #1,D0
+080002E0  66EE       682          bne       Init_CanBus_Controller0_4
+                     683   ; } while((Can0_ModeControlReg & RM_RR_Bit ) != ClrByte);
+                     684   ; Can0_InterruptEnReg = ENABLE; /* enable external interrupt from SJA1000 */
+080002E2  13FC 0001  685          move.b    #1,5242888
+080002E6  0050 0008 
+                     686   ; //EA = ENABLE; /* enable all interrupts */
+                     687   ; /*----- end of Initialization Example of the SJA1000 ------------------------*/
+                     688   ; printf("\r\nEnd of Canbus 0 Initialization");
+080002EA  4879 0800  689          pea       @lab584~1_1.L
+080002EE  1280      
+080002F0  4EB9 0800  690          jsr       _printf
+080002F4  08C2      
+080002F6  584F       691          addq.w    #4,A7
+080002F8  4E75       692          rts
+                     693   ; }
+                     694   ; // initialisation for Can controller 1
+                     695   ; void Init_CanBus_Controller1(void)
+                     696   ; {
+                     697   _Init_CanBus_Controller1:
+                     698   ; // TODO - put your Canbus initialisation code for CanController 1 here
+                     699   ; // See section 4.2.1 in the application note for details (PELICAN MODE)
+                     700   ; /* disable interrupts, if used (not necessary after power-on) */
+                     701   ; // EA = DISABLE; /* disable all interrupts */
+                     702   ; Can1_InterruptEnReg = DISABLE; /* disable external interrupt from SJA1000 */
+080002FA  4239 0050  703          clr.b     5243400
+080002FE  0208      
+                     704   ; /* set reset mode/request (Note: after power-on SJA1000 is in BasicCAN mode)
+                     705   ; leave loop after a time out and signal an error */
+                     706   ; while((Can1_ModeControlReg & RM_RR_Bit ) == ClrByte)
+                     707   Init_CanBus_Controller1_1:
+08000300  1039 0050  708          move.b    5243392,D0
+08000304  0200      
+08000306  C03C 0001  709          and.b     #1,D0
+0800030A  6612       710          bne.s     Init_CanBus_Controller1_3
+                     711   ; {
+                     712   ; /* other bits than the reset mode/request bit are unchanged */
+                     713   ; Can1_ModeControlReg = Can1_ModeControlReg | RM_RR_Bit ;
+0800030C  1039 0050  714          move.b    5243392,D0
+08000310  0200      
+08000312  803C 0001  715          or.b      #1,D0
+08000316  13C0 0050  716          move.b    D0,5243392
+0800031A  0200      
+0800031C  60E2       717          bra       Init_CanBus_Controller1_1
+                     718   Init_CanBus_Controller1_3:
+                     719   ; }
+                     720   ; /* set the Clock Divider Register according to the given hardware of Figure 3
+                     721   ; select PeliCAN mode
+                     722   ; bypass CAN input comparator as external transceiver is used
+                     723   ; select the clock for the controller S87C654 */
+                     724   ; Can1_ClockDivideReg = CANMode_Bit | CBP_Bit | DivBy2;
+0800031E  13FC 00C0  725          move.b    #192,5243454
+08000322  0050 023E 
+                     726   ; /* disable CAN interrupts, if required (always necessary after power-on)
+                     727   ; (write to SJA1000 Interrupt Enable / Control Register) */
+                     728   ; Can1_InterruptEnReg = ClrIntEnSJA;
+08000326  4239 0050  729          clr.b     5243400
+0800032A  0208      
+                     730   ; /* define acceptance code and mask */
+                     731   ; Can1_AcceptCode0Reg = ClrByte;
+0800032C  4239 0050  732          clr.b     5243424
+08000330  0220      
+                     733   ; Can1_AcceptCode1Reg = ClrByte;
+08000332  4239 0050  734          clr.b     5243426
+08000336  0222      
+                     735   ; Can1_AcceptCode2Reg = ClrByte;
+08000338  4239 0050  736          clr.b     5243428
+0800033C  0224      
+                     737   ; Can1_AcceptCode3Reg = ClrByte;
+0800033E  4239 0050  738          clr.b     5243430
+08000342  0226      
+                     739   ; Can1_AcceptMask0Reg = DontCare; /* every identifier is accepted */
+08000344  13FC 00FF  740          move.b    #255,5243432
+08000348  0050 0228 
+                     741   ; Can1_AcceptMask1Reg = DontCare; /* every identifier is accepted */
+0800034C  13FC 00FF  742          move.b    #255,5243434
+08000350  0050 022A 
+                     743   ; Can1_AcceptMask2Reg = DontCare; /* every identifier is accepted */
+08000354  13FC 00FF  744          move.b    #255,5243436
+08000358  0050 022C 
+                     745   ; Can1_AcceptMask3Reg = DontCare; /* every identifier is accepted */
+0800035C  13FC 00FF  746          move.b    #255,5243438
+08000360  0050 022E 
+                     747   ; /* configure bus timing */
+                     748   ; /* Values are given to us*/
+                     749   ; Can1_BusTiming0Reg = 0x04;
+08000364  13FC 0004  750          move.b    #4,5243404
+08000368  0050 020C 
+                     751   ; Can1_BusTiming1Reg = 0x7f;
+0800036C  13FC 007F  752          move.b    #127,5243406
+08000370  0050 020E 
+                     753   ; /* configure CAN outputs: float on TX1, Push/Pull on TX0,
+                     754   ; normal output mode */
+                     755   ; Can1_OutControlReg = Tx1Float | Tx0PshPull | NormalMode;
+08000374  13FC 001A  756          move.b    #26,5243408
+08000378  0050 0210 
+                     757   ; /* leave the reset mode/request i.e. switch to operating mode,
+                     758   ; the interrupts of the S87C654 are enabled
+                     759   ; but not the CAN interrupts of the SJA1000, which can be done separately
+                     760   ; for the different tasks in a system */
+                     761   ; /* clear Reset Mode bit, select dual Acceptance Filter Mode,
+                     762   ; switch off Self Test Mode and Listen Only Mode,
+                     763   ; clear Sleep Mode (wake up) */
+                     764   ; do /* wait until RM_RR_Bit is cleared */
+                     765   Init_CanBus_Controller1_4:
+                     766   ; /* break loop after a time out and signal an error */
+                     767   ; {
+                     768   ; Can1_ModeControlReg = ClrByte;
+0800037C  4239 0050  769          clr.b     5243392
+08000380  0200      
+08000382  1039 0050  770          move.b    5243392,D0
+08000386  0200      
+08000388  C03C 0001  771          and.b     #1,D0
+0800038C  66EE       772          bne       Init_CanBus_Controller1_4
+                     773   ; } while((Can1_ModeControlReg & RM_RR_Bit ) != ClrByte);
+                     774   ; Can1_InterruptEnReg = ENABLE; /* enable external interrupt from SJA1000 */
+0800038E  13FC 0001  775          move.b    #1,5243400
+08000392  0050 0208 
+                     776   ; //EA = ENABLE; /* enable all interrupts */
+                     777   ; /*----- end of Initialization Example of the SJA1000 ------------------------*/
+                     778   ; printf("\r\nEnd of Canbus 1 Initialization");
+08000396  4879 0800  779          pea       @lab584~1_2.L
+0800039A  12A2      
+0800039C  4EB9 0800  780          jsr       _printf
+080003A0  08C2      
+080003A2  584F       781          addq.w    #4,A7
+080003A4  4E75       782          rts
+                     783   ; }
+                     784   ; // Transmit for sending a message via Can controller 0
+                     785   ; void CanBus0_Transmit(void)
+                     786   ; {
+                     787   _CanBus0_Transmit:
+080003A6  4E56 FFFC  788          link      A6,#-4
+080003AA  48E7 2020  789          movem.l   D2/A2,-(A7)
+080003AE  45F9 0800  790          lea       _count.L,A2
+080003B2  1520      
+                     791   ; int i, switches = 0;
+080003B4  4282       792          clr.l     D2
+                     793   ; // TODO - put your Canbus transmit code for CanController 0 here
+                     794   ; // See section 4.2.2 in the application note for details (PELICAN MODE)
+                     795   ; /* wait until the Transmit Buffer is released */
+                     796   ; do
+                     797   ; {
+                     798   CanBus0_Transmit_1:
+                     799   ; /* start a polling timer and run some tasks while waiting
+                     800   ; break the loop and signal an error if time too long */
+                     801   ; Timer2_Reset();
+080003B6  4EB9 0800  802          jsr       _Timer2_Reset
+080003BA  005E      
+                     803   ; count++;
+080003BC  5292       804          addq.l    #1,(A2)
+080003BE  1039 0050  805          move.b    5242884,D0
+080003C2  0004      
+080003C4  C03C 0004  806          and.b     #4,D0
+080003C8  0C00 0004  807          cmp.b     #4,D0
+080003CC  66E8       808          bne       CanBus0_Transmit_1
+                     809   ; //printf("\r\nValue of count: %d", count);
+                     810   ; // Mason: I mean we can test without a polling timer for now
+                     811   ; } while((Can0_StatusReg & TBS_Bit ) != TBS_Bit );
+                     812   ; /* Transmit Buffer is released, a message may be written into the buffer */
+                     813   ; /* in this example a Standard Frame message shall be transmitted */
+                     814   ; switches = (PortB << 8) | (PortA);
+080003CE  1039 0040  815          move.b    4194306,D0
+080003D2  0002      
+080003D4  C0BC 0000  816          and.l     #255,D0
+080003D8  00FF      
+080003DA  E188       817          lsl.l     #8,D0
+080003DC  1239 0040  818          move.b    4194304,D1
+080003E0  0000      
+080003E2  C2BC 0000  819          and.l     #255,D1
+080003E6  00FF      
+080003E8  8081       820          or.l      D1,D0
+080003EA  2400       821          move.l    D0,D2
+                     822   ; Can0_TxFrameInfo = 0x08; /* SFF (data), DLC=8 */
+080003EC  13FC 0008  823          move.b    #8,5242912
+080003F0  0050 0020 
+                     824   ; Can0_TxBuffer1 = 0xA5; /* ID1 = A5, (1010 0101) */
+080003F4  13FC 00A5  825          move.b    #165,5242914
+080003F8  0050 0022 
+                     826   ; Can0_TxBuffer2 = 0x20; /* ID2 = 20, (0010 0000) */
+080003FC  13FC 0020  827          move.b    #32,5242916
+08000400  0050 0024 
+                     828   ; Can0_TxBuffer3 = switches; // Switch Status
+08000404  13C2 0050  829          move.b    D2,5242918
+08000408  0026      
+                     830   ; if (count%2 == 0){
+0800040A  2F12       831          move.l    (A2),-(A7)
+0800040C  4878 0002  832          pea       2
+08000410  4EB9 0800  833          jsr       LDIV
+08000414  07F6      
+08000416  202F 0004  834          move.l    4(A7),D0
+0800041A  504F       835          addq.w    #8,A7
+0800041C  4A80       836          tst.l     D0
+0800041E  6612       837          bne.s     CanBus0_Transmit_3
+                     838   ; Can0_TxBuffer4 = ADC_val; // ADC Potentiometer
+08000420  2039 0800  839          move.l    _ADC_val.L,D0
+08000424  1524      
+08000426  13C0 0050  840          move.b    D0,5242920
+0800042A  0028      
+                     841   ; ADC_val++;
+0800042C  52B9 0800  842          addq.l    #1,_ADC_val.L
+08000430  1524      
+                     843   CanBus0_Transmit_3:
+                     844   ; }
+                     845   ; if (count%5 == 0){
+08000432  2F12       846          move.l    (A2),-(A7)
+08000434  4878 0005  847          pea       5
+08000438  4EB9 0800  848          jsr       LDIV
+0800043C  07F6      
+0800043E  202F 0004  849          move.l    4(A7),D0
+08000442  504F       850          addq.w    #8,A7
+08000444  4A80       851          tst.l     D0
+08000446  6612       852          bne.s     CanBus0_Transmit_5
+                     853   ; Can0_TxBuffer5 = Photo_val; // Light Sensor
+08000448  2039 0800  854          move.l    _Photo_val.L,D0
+0800044C  1528      
+0800044E  13C0 0050  855          move.b    D0,5242922
+08000452  002A      
+                     856   ; Photo_val++;
+08000454  52B9 0800  857          addq.l    #1,_Photo_val.L
+08000458  1528      
+                     858   CanBus0_Transmit_5:
+                     859   ; }
+                     860   ; if (count%20 == 0){
+0800045A  2F12       861          move.l    (A2),-(A7)
+0800045C  4878 0014  862          pea       20
+08000460  4EB9 0800  863          jsr       LDIV
+08000464  07F6      
+08000466  202F 0004  864          move.l    4(A7),D0
+0800046A  504F       865          addq.w    #8,A7
+0800046C  4A80       866          tst.l     D0
+0800046E  6612       867          bne.s     CanBus0_Transmit_7
+                     868   ; Can0_TxBuffer6 = Therm_val; // Thermistor
+08000470  2039 0800  869          move.l    _Therm_val.L,D0
+08000474  152C      
+08000476  13C0 0050  870          move.b    D0,5242924
+0800047A  002C      
+                     871   ; Therm_val++;
+0800047C  52B9 0800  872          addq.l    #1,_Therm_val.L
+08000480  152C      
+                     873   CanBus0_Transmit_7:
+                     874   ; }
+                     875   ; //Can0_TxBuffer7 = 0x85; /* data5 = 55 */
+                     876   ; //Can0_TxBuffer8 = 0x86; /* data6 = 56 */
+                     877   ; //Can0_TxBuffer9 = 0x87; /* data7 = 57 */
+                     878   ; //Can0_TxBuffer10 = 0x88; /* data8 = 58 */
+                     879   ; /* Start the transmission */
+                     880   ; Can0_CommandReg = TR_Bit ; /* Set Transmission Request bit */
+08000482  13FC 0001  881          move.b    #1,5242882
+08000486  0050 0002 
+0800048A  4CDF 0404  882          movem.l   (A7)+,D2/A2
+0800048E  4E5E       883          unlk      A6
+08000490  4E75       884          rts
+                     885   ; }
+                     886   ; // Transmit for sending a message via Can controller 1
+                     887   ; void CanBus1_Transmit(void)
+                     888   ; {
+                     889   _CanBus1_Transmit:
+                     890   ; // TODO - put your Canbus transmit code for CanController 1 here
+                     891   ; // See section 4.2.2 in the application note for details (PELICAN MODE)
+                     892   ; /* wait until the Transmit Buffer is released */
+                     893   ; do
+                     894   ; {
+                     895   CanBus1_Transmit_1:
+                     896   ; /* start a polling timer and run some tasks while waiting
+                     897   ; break the loop and signal an error if time too long */
+                     898   ; // Mason: I mean we can test without a polling timer for now
+                     899   ; } while((Can1_StatusReg & TBS_Bit ) != TBS_Bit );
+08000492  1039 0050  900          move.b    5243396,D0
+08000496  0204      
+08000498  C03C 0004  901          and.b     #4,D0
+0800049C  0C00 0004  902          cmp.b     #4,D0
+080004A0  66F0       903          bne       CanBus1_Transmit_1
+                     904   ; /* Transmit Buffer is released, a message may be written into the buffer */
+                     905   ; /* in this example a Standard Frame message shall be transmitted */
+                     906   ; Can1_TxFrameInfo = 0x08; /* SFF (data), DLC=8 */
+080004A2  13FC 0008  907          move.b    #8,5243424
+080004A6  0050 0220 
+                     908   ; Can1_TxBuffer1 = 0xA5; /* ID1 = A5, (1010 0101) */
+080004AA  13FC 00A5  909          move.b    #165,5243426
+080004AE  0050 0222 
+                     910   ; Can1_TxBuffer2 = 0x20; /* ID2 = 20, (0010 0000) */
+080004B2  13FC 0020  911          move.b    #32,5243428
+080004B6  0050 0224 
+                     912   ; Can1_TxBuffer3 = 0x71; /* data1 = 51 */
+080004BA  13FC 0071  913          move.b    #113,5243430
+080004BE  0050 0226 
+                     914   ; Can1_TxBuffer4 = 0x72; /* data2 = 52 */
+080004C2  13FC 0072  915          move.b    #114,5243432
+080004C6  0050 0228 
+                     916   ; Can1_TxBuffer5 = 0x73; /* data3 = 53 */
+080004CA  13FC 0073  917          move.b    #115,5243434
+080004CE  0050 022A 
+                     918   ; Can1_TxBuffer6 = 0x74; /* data4 = 54 */
+080004D2  13FC 0074  919          move.b    #116,5243436
+080004D6  0050 022C 
+                     920   ; Can1_TxBuffer7 = 0x75; /* data5 = 55 */
+080004DA  13FC 0075  921          move.b    #117,5243438
+080004DE  0050 022E 
+                     922   ; Can1_TxBuffer8 = 0x76; /* data6 = 56 */
+080004E2  13FC 0076  923          move.b    #118,5243440
+080004E6  0050 0230 
+                     924   ; Can1_TxBuffer9 = 0x77; /* data7 = 57 */
+080004EA  13FC 0077  925          move.b    #119,5243442
+080004EE  0050 0232 
+                     926   ; Can1_TxBuffer10 = 0x78; /* data8 = 58 */
+080004F2  13FC 0078  927          move.b    #120,5243444
+080004F6  0050 0234 
+                     928   ; /* Start the transmission */
+                     929   ; Can1_CommandReg = TR_Bit ; /* Set Transmission Request bit */
+080004FA  13FC 0001  930          move.b    #1,5243394
+080004FE  0050 0202 
+08000502  4E75       931          rts
+                     932   ; }
+                     933   ; // Receive for reading a received message via Can controller 0
+                     934   ; void CanBus0_Receive(void)
+                     935   ; {
+                     936   _CanBus0_Receive:
+08000504  4E56 FFF8  937          link      A6,#-8
+08000508  2F0A       938          move.l    A2,-(A7)
+0800050A  45F9 0800  939          lea       _printf.L,A2
+0800050E  08C2      
+                     940   ; // TODO - put your Canbus receive code for CanController 0 here
+                     941   ; // See section 4.2.4 in the application note for details (PELICAN MODE)
+                     942   ; /* read the Interrupt Register content from SJA1000 and save temporarily
+                     943   ; all interrupt flags are cleared (in PeliCAN mode the Receive
+                     944   ; Interrupt (RI) is cleared first, when giving the Release Buffer command)
+                     945   ; */
+                     946   ; //CANInterrupt = InterruptReg;
+                     947   ; unsigned char CANInterrupt = Can0_InterruptEnReg;
+08000510  1D79 0050  948          move.b    5242888,-5(A6)
+08000514  0008 FFFB 
+                     949   ; unsigned int RI_VarBit = CANInterrupt & (1<<0);
+08000518  102E FFFB  950          move.b    -5(A6),D0
+0800051C  C0BC 0000  951          and.l     #255,D0
+08000520  00FF      
+08000522  C0BC 0000  952          and.l     #1,D0
+08000526  0001      
+08000528  2D40 FFFC  953          move.l    D0,-4(A6)
+                     954   ; /* check for the Receive Interrupt and read one or all received messages */
+                     955   ; if (RI_VarBit == YES) /* Receive Interrupt detected */
+0800052C  202E FFFC  956          move.l    -4(A6),D0
+08000530  0C80 0000  957          cmp.l     #1,D0
+08000534  0001      
+08000536  6600 0112  958          bne       CanBus0_Receive_1
+                     959   ; // Mason: might beed to clear the Receive Interrupt bit (bit 0 in the Can0_InterruptEnReg)
+                     960   ; {
+                     961   ; /* get the content of the Receive Buffer from SJA1000 and store the
+                     962   ; message into internal memory of the controller,
+                     963   ; it is possible at once to decode the FrameInfo and Data Length Code
+                     964   ; and adapt the fetch appropriately */
+                     965   ; printf("\r\n CANBUS 0: Receive Buffer Frame Info: %x", Can0_RxFrameInfo) ;
+0800053A  1239 0050  966          move.b    5242912,D1
+0800053E  0020      
+08000540  C2BC 0000  967          and.l     #255,D1
+08000544  00FF      
+08000546  2F01       968          move.l    D1,-(A7)
+08000548  4879 0800  969          pea       @lab584~1_3.L
+0800054C  12C4      
+0800054E  4E92       970          jsr       (A2)
+08000550  504F       971          addq.w    #8,A7
+                     972   ; printf("\r\n CANBUS 0:Receive Buffer 1: %x", Can0_RxBuffer1) ;
+08000552  1239 0050  973          move.b    5242914,D1
+08000556  0022      
+08000558  C2BC 0000  974          and.l     #255,D1
+0800055C  00FF      
+0800055E  2F01       975          move.l    D1,-(A7)
+08000560  4879 0800  976          pea       @lab584~1_4.L
+08000564  12F0      
+08000566  4E92       977          jsr       (A2)
+08000568  504F       978          addq.w    #8,A7
+                     979   ; printf("\r\n CANBUS 0:Receive Buffer 2: %x", Can0_RxBuffer2) ;
+0800056A  1239 0050  980          move.b    5242916,D1
+0800056E  0024      
+08000570  C2BC 0000  981          and.l     #255,D1
+08000574  00FF      
+08000576  2F01       982          move.l    D1,-(A7)
+08000578  4879 0800  983          pea       @lab584~1_5.L
+0800057C  1312      
+0800057E  4E92       984          jsr       (A2)
+08000580  504F       985          addq.w    #8,A7
+                     986   ; printf("\r\n CANBUS 0:Receive Buffer 3: %x", Can0_RxBuffer3) ;
+08000582  1239 0050  987          move.b    5242918,D1
+08000586  0026      
+08000588  C2BC 0000  988          and.l     #255,D1
+0800058C  00FF      
+0800058E  2F01       989          move.l    D1,-(A7)
+08000590  4879 0800  990          pea       @lab584~1_6.L
+08000594  1334      
+08000596  4E92       991          jsr       (A2)
+08000598  504F       992          addq.w    #8,A7
+                     993   ; printf("\r\n CANBUS 0:Receive Buffer 4: %x", Can0_RxBuffer4) ;
+0800059A  1239 0050  994          move.b    5242920,D1
+0800059E  0028      
+080005A0  C2BC 0000  995          and.l     #255,D1
+080005A4  00FF      
+080005A6  2F01       996          move.l    D1,-(A7)
+080005A8  4879 0800  997          pea       @lab584~1_7.L
+080005AC  1356      
+080005AE  4E92       998          jsr       (A2)
+080005B0  504F       999          addq.w    #8,A7
+                    1000   ; printf("\r\n CANBUS 0:Receive Buffer 5: %x", Can0_RxBuffer5) ;
+080005B2  1239 0050 1001          move.b    5242922,D1
+080005B6  002A      
+080005B8  C2BC 0000 1002          and.l     #255,D1
+080005BC  00FF      
+080005BE  2F01      1003          move.l    D1,-(A7)
+080005C0  4879 0800 1004          pea       @lab584~1_8.L
+080005C4  1378      
+080005C6  4E92      1005          jsr       (A2)
+080005C8  504F      1006          addq.w    #8,A7
+                    1007   ; printf("\r\n CANBUS 0:Receive Buffer 6: %x", Can0_RxBuffer6) ;
+080005CA  1239 0050 1008          move.b    5242924,D1
+080005CE  002C      
+080005D0  C2BC 0000 1009          and.l     #255,D1
+080005D4  00FF      
+080005D6  2F01      1010          move.l    D1,-(A7)
+080005D8  4879 0800 1011          pea       @lab584~1_9.L
+080005DC  139A      
+080005DE  4E92      1012          jsr       (A2)
+080005E0  504F      1013          addq.w    #8,A7
+                    1014   ; printf("\r\n CANBUS 0:Receive Buffer 7: %x", Can0_RxBuffer7) ;
+080005E2  1239 0050 1015          move.b    5242926,D1
+080005E6  002E      
+080005E8  C2BC 0000 1016          and.l     #255,D1
+080005EC  00FF      
+080005EE  2F01      1017          move.l    D1,-(A7)
+080005F0  4879 0800 1018          pea       @lab584~1_10.L
+080005F4  13BC      
+080005F6  4E92      1019          jsr       (A2)
+080005F8  504F      1020          addq.w    #8,A7
+                    1021   ; printf("\r\n CANBUS 0:Receive Buffer 8: %x", Can0_RxBuffer8) ;
+080005FA  1239 0050 1022          move.b    5242928,D1
+080005FE  0030      
+08000600  C2BC 0000 1023          and.l     #255,D1
+08000604  00FF      
+08000606  2F01      1024          move.l    D1,-(A7)
+08000608  4879 0800 1025          pea       @lab584~1_11.L
+0800060C  13DE      
+0800060E  4E92      1026          jsr       (A2)
+08000610  504F      1027          addq.w    #8,A7
+                    1028   ; printf("\r\n CANBUS 0:Receive Buffer 9: %x", Can0_RxBuffer9) ;
+08000612  1239 0050 1029          move.b    5242930,D1
+08000616  0032      
+08000618  C2BC 0000 1030          and.l     #255,D1
+0800061C  00FF      
+0800061E  2F01      1031          move.l    D1,-(A7)
+08000620  4879 0800 1032          pea       @lab584~1_12.L
+08000624  1400      
+08000626  4E92      1033          jsr       (A2)
+08000628  504F      1034          addq.w    #8,A7
+                    1035   ; printf("\r\n CANBUS 0:Receive Buffer 10: %x", Can0_RxBuffer10) ;
+0800062A  1239 0050 1036          move.b    5242932,D1
+0800062E  0034      
+08000630  C2BC 0000 1037          and.l     #255,D1
+08000634  00FF      
+08000636  2F01      1038          move.l    D1,-(A7)
+08000638  4879 0800 1039          pea       @lab584~1_13.L
+0800063C  1422      
+0800063E  4E92      1040          jsr       (A2)
+08000640  504F      1041          addq.w    #8,A7
+                    1042   ; /* release the Receive Buffer, now the Receive Interrupt flag is cleared,
+                    1043   ; further messages will generate a new interrupt */
+                    1044   ; //Can0_InterruptEnReg =
+                    1045   ; Can0_CommandReg = RRB_Bit; /* Release Receive Buffer */
+08000642  13FC 0004 1046          move.b    #4,5242882
+08000646  0050 0002 
+                    1047   CanBus0_Receive_1:
+0800064A  245F      1048          move.l    (A7)+,A2
+0800064C  4E5E      1049          unlk      A6
+0800064E  4E75      1050          rts
+                    1051   ; }
+                    1052   ; }
+                    1053   ; // Receive for reading a received message via Can controller 1
+                    1054   ; void CanBus1_Receive(void)
+                    1055   ; {
+                    1056   _CanBus1_Receive:
+08000650  4E56 FFF8 1057          link      A6,#-8
+08000654  48E7 2020 1058          movem.l   D2/A2,-(A7)
+08000658  45F9 0800 1059          lea       _printf.L,A2
+0800065C  08C2      
+                    1060   ; // TODO - put your Canbus receive code for CanController 1 here
+                    1061   ; // See section 4.2.4 in the application note for details (PELICAN MODE)
+                    1062   ; /* read the Interrupt Register content from SJA1000 and save temporarily
+                    1063   ; all interrupt flags are cleared (in PeliCAN mode the Receive
+                    1064   ; Interrupt (RI) is cleared first, when giving the Release Buffer command)
+                    1065   ; */
+                    1066   ; //CANInterrupt = InterruptReg;
+                    1067   ; unsigned char CANInterrupt = Can1_InterruptEnReg;
+0800065E  1D79 0050 1068          move.b    5243400,-5(A6)
+08000662  0208 FFFB 
+                    1069   ; unsigned int RI_VarBit = CANInterrupt & (1<<0);
+08000666  102E FFFB 1070          move.b    -5(A6),D0
+0800066A  C0BC 0000 1071          and.l     #255,D0
+0800066E  00FF      
+08000670  C0BC 0000 1072          and.l     #1,D0
+08000674  0001      
+08000676  2D40 FFFC 1073          move.l    D0,-4(A6)
+                    1074   ; int i;
+                    1075   ; /* check for the Receive Interrupt and read one or all received messages */
+                    1076   ; if (RI_VarBit == YES) /* Receive Interrupt detected */
+0800067A  202E FFFC 1077          move.l    -4(A6),D0
+0800067E  0C80 0000 1078          cmp.l     #1,D0
+08000682  0001      
+08000684  6600 0094 1079          bne       CanBus1_Receive_1
+                    1080   ; // Mason: might beed to clear the Receive Interrupt bit (bit 0 in the Can1_InterruptEnReg)
+                    1081   ; {
+                    1082   ; /* get the content of the Receive Buffer from SJA1000 and store the
+                    1083   ; message into internal memory of the controller,
+                    1084   ; it is possible at once to decode the FrameInfo and Data Length Code
+                    1085   ; and adapt the fetch appropriately */
+                    1086   ; //printf("\r\n CANBUS 1: Receive Buffer Frame Info: %x", Can1_RxFrameInfo) ;
+                    1087   ; //printf("\r\n CANBUS 1: Receive Buffer 1: %x", Can1_RxBuffer1) ;
+                    1088   ; //printf("\r\n CANBUS 1: Receive Buffer 2: %x", Can1_RxBuffer2) ;
+                    1089   ; printf("\r\n CANBUS 1: Receive Buffer 3 (Switches SW[7-0]): ") ;
+08000688  4879 0800 1090          pea       @lab584~1_14.L
+0800068C  1444      
+0800068E  4E92      1091          jsr       (A2)
+08000690  584F      1092          addq.w    #4,A7
+                    1093   ; for (i = (int)(0x00000080); i > 0; i = i >> 1) {
+08000692  243C 0000 1094          move.l    #128,D2
+08000696  0080      
+                    1095   CanBus1_Receive_3:
+08000698  0C82 0000 1096          cmp.l     #0,D2
+0800069C  0000      
+0800069E  6F2A      1097          ble.s     CanBus1_Receive_5
+                    1098   ; if ((Can1_RxBuffer3 & i) == 0)
+080006A0  1039 0050 1099          move.b    5243430,D0
+080006A4  0226      
+080006A6  C0BC 0000 1100          and.l     #255,D0
+080006AA  00FF      
+080006AC  C082      1101          and.l     D2,D0
+080006AE  660C      1102          bne.s     CanBus1_Receive_6
+                    1103   ; printf("0");
+080006B0  4879 0800 1104          pea       @lab584~1_15.L
+080006B4  1478      
+080006B6  4E92      1105          jsr       (A2)
+080006B8  584F      1106          addq.w    #4,A7
+080006BA  600A      1107          bra.s     CanBus1_Receive_7
+                    1108   CanBus1_Receive_6:
+                    1109   ; else
+                    1110   ; printf("1");
+080006BC  4879 0800 1111          pea       @lab584~1_16.L
+080006C0  147A      
+080006C2  4E92      1112          jsr       (A2)
+080006C4  584F      1113          addq.w    #4,A7
+                    1114   CanBus1_Receive_7:
+080006C6  E282      1115          asr.l     #1,D2
+080006C8  60CE      1116          bra       CanBus1_Receive_3
+                    1117   CanBus1_Receive_5:
+                    1118   ; }
+                    1119   ; printf("\r\n CANBUS 1: ADC Readings: %x", Can1_RxBuffer4) ;
+080006CA  1239 0050 1120          move.b    5243432,D1
+080006CE  0228      
+080006D0  C2BC 0000 1121          and.l     #255,D1
+080006D4  00FF      
+080006D6  2F01      1122          move.l    D1,-(A7)
+080006D8  4879 0800 1123          pea       @lab584~1_17.L
+080006DC  147C      
+080006DE  4E92      1124          jsr       (A2)
+080006E0  504F      1125          addq.w    #8,A7
+                    1126   ; printf("\r\n CANBUS 1: Light Sensor: %x", Can1_RxBuffer5) ;
+080006E2  1239 0050 1127          move.b    5243434,D1
+080006E6  022A      
+080006E8  C2BC 0000 1128          and.l     #255,D1
+080006EC  00FF      
+080006EE  2F01      1129          move.l    D1,-(A7)
+080006F0  4879 0800 1130          pea       @lab584~1_18.L
+080006F4  149A      
+080006F6  4E92      1131          jsr       (A2)
+080006F8  504F      1132          addq.w    #8,A7
+                    1133   ; printf("\r\n CANBUS 1: Thermistor: %x", Can1_RxBuffer6) ;
+080006FA  1239 0050 1134          move.b    5243436,D1
+080006FE  022C      
+08000700  C2BC 0000 1135          and.l     #255,D1
+08000704  00FF      
+08000706  2F01      1136          move.l    D1,-(A7)
+08000708  4879 0800 1137          pea       @lab584~1_19.L
+0800070C  14B8      
+0800070E  4E92      1138          jsr       (A2)
+08000710  504F      1139          addq.w    #8,A7
+                    1140   ; //printf("\r\n CANBUS 1: Receive Buffer 7: %x", Can1_RxBuffer7) ;
+                    1141   ; //printf("\r\n CANBUS 1: Receive Buffer 8: %x", Can1_RxBuffer8) ;
+                    1142   ; //printf("\r\n CANBUS 1: Receive Buffer 9: %x", Can1_RxBuffer9) ;
+                    1143   ; //printf("\r\n CANBUS 1: Receive Buffer 10: %x", Can1_RxBuffer10) ;
+                    1144   ; /* release the Receive Buffer, now the Receive Interrupt flag is cleared,
+                    1145   ; further messages will generate a new interrupt */
+                    1146   ; Can1_CommandReg = RRB_Bit; /* Release Receive Buffer */
+08000712  13FC 0004 1147          move.b    #4,5243394
+08000716  0050 0202 
+                    1148   CanBus1_Receive_1:
+0800071A  4CDF 0404 1149          movem.l   (A7)+,D2/A2
+0800071E  4E5E      1150          unlk      A6
+08000720  4E75      1151          rts
+                    1152   ; }
+                    1153   ; }
+                    1154   ; void delay(){
+                    1155   _delay:
+08000722  48E7 3000 1156          movem.l   D2/D3,-(A7)
+                    1157   ; int c, d;
+                    1158   ; for (c = 1; c <= 3000; c++)
+08000726  7601      1159          moveq     #1,D3
+                    1160   delay_1:
+08000728  0C83 0000 1161          cmp.l     #3000,D3
+0800072C  0BB8      
+0800072E  6E12      1162          bgt.s     delay_3
+                    1163   ; for (d = 1; d <= 3000; d++)
+08000730  7401      1164          moveq     #1,D2
+                    1165   delay_4:
+08000732  0C82 0000 1166          cmp.l     #3000,D2
+08000736  0BB8      
+08000738  6E04      1167          bgt.s     delay_6
+                    1168   ; {}
+0800073A  5282      1169          addq.l    #1,D2
+0800073C  60F4      1170          bra       delay_4
+                    1171   delay_6:
+0800073E  5283      1172          addq.l    #1,D3
+08000740  60E6      1173          bra       delay_1
+                    1174   delay_3:
+                    1175   ; return;
+08000742  4CDF 000C 1176          movem.l   (A7)+,D2/D3
+08000746  4E75      1177          rts
+                    1178   ; }
+                    1179   ; void CanBusTest(void)
+                    1180   ; {
+                    1181   _CanBusTest:
+08000748  2F0A      1182          move.l    A2,-(A7)
+0800074A  45F9 0800 1183          lea       _printf.L,A2
+0800074E  08C2      
+                    1184   ; // initialise the two Can controllers
+                    1185   ; Init_CanBus_Controller0();
+08000750  4EB9 0800 1186          jsr       _Init_CanBus_Controller0
+08000754  024E      
+                    1187   ; Init_CanBus_Controller1();
+08000756  4EB9 0800 1188          jsr       _Init_CanBus_Controller1
+0800075A  02FA      
+                    1189   ; printf("\r\n\r\n---- CANBUS Test ----\r\n") ;
+0800075C  4879 0800 1190          pea       @lab584~1_20.L
+08000760  14D4      
+08000762  4E92      1191          jsr       (A2)
+08000764  584F      1192          addq.w    #4,A7
+                    1193   ; // simple application to alternately transmit and receive messages from each of two nodes
+                    1194   ; delay();                    // write a routine to delay say 1/2 second so we don't flood the network with messages to0 quickly
+08000766  4EB9 0800 1195          jsr       _delay
+0800076A  0722      
+                    1196   ; //printf("\r\nCanBus0 is transmitting......");
+                    1197   ; CanBus0_Transmit() ;       // transmit a message via Controller 0
+0800076C  4EB9 0800 1198          jsr       _CanBus0_Transmit
+08000770  03A6      
+                    1199   ; //printf("\r\nCanBus1 is receiving......");
+                    1200   ; CanBus1_Receive() ;        // receive a message via Controller 1 (and display it)
+08000772  4EB9 0800 1201          jsr       _CanBus1_Receive
+08000776  0650      
+                    1202   ; printf("\r\n") ;
+08000778  4879 0800 1203          pea       @lab584~1_21.L
+0800077C  14F0      
+0800077E  4E92      1204          jsr       (A2)
+08000780  584F      1205          addq.w    #4,A7
+                    1206   ; delay();                    // write a routine to delay say 1/2 second so we don't flood the network with messages to0 quickly
+08000782  4EB9 0800 1207          jsr       _delay
+08000786  0722      
+                    1208   ; //printf("\r\nCanBus1 is transmitting......");
+                    1209   ; CanBus1_Transmit() ;        // transmit a message via Controller 1
+08000788  4EB9 0800 1210          jsr       _CanBus1_Transmit
+0800078C  0492      
+                    1211   ; //printf("\r\nCanBus0 is receiving......");
+                    1212   ; CanBus0_Receive() ;         // receive a message via Controller 0 (and display it)
+0800078E  4EB9 0800 1213          jsr       _CanBus0_Receive
+08000792  0504      
+                    1214   ; printf("\r\n") ;
+08000794  4879 0800 1215          pea       @lab584~1_21.L
+08000798  14F0      
+0800079A  4E92      1216          jsr       (A2)
+0800079C  584F      1217          addq.w    #4,A7
+0800079E  245F      1218          move.l    (A7)+,A2
+080007A0  4E75      1219          rts
+                    1220   ; }
+                    1221   ; void Send_Recieve_CANBUS_0(){
+                    1222   _Send_Recieve_CANBUS_0:
+                    1223   ; CanBus0_Transmit();
+080007A2  4EB9 0800 1224          jsr       _CanBus0_Transmit
+080007A6  03A6      
+                    1225   ; CanBus1_Receive();
+080007A8  4EB9 0800 1226          jsr       _CanBus1_Receive
+080007AC  0650      
+080007AE  4E75      1227          rts
+                    1228   ; }
+                    1229   ; void main(){
+                    1230   _main:
+                    1231   ; Init_CanBus_Controller0();
+080007B0  4EB9 0800 1232          jsr       _Init_CanBus_Controller0
+080007B4  024E      
+                    1233   ; Init_CanBus_Controller1();
+080007B6  4EB9 0800 1234          jsr       _Init_CanBus_Controller1
+080007BA  02FA      
+                    1235   ; //CanBusTest();
+                    1236   ; //Timer2_Init();
+                    1237   ; printf("\r\nTimer Initialized");
+080007BC  4879 0800 1238          pea       @lab584~1_22.L
+080007C0  14F4      
+080007C2  4EB9 0800 1239          jsr       _printf
+080007C6  08C2      
+080007C8  584F      1240          addq.w    #4,A7
+                    1241   ; InstallExceptionHandler(Send_Recieve_CANBUS_0, 30);
+080007CA  4878 001E 1242          pea       30
+080007CE  4879 0800 1243          pea       _Send_Recieve_CANBUS_0.L
+080007D2  07A2      
+080007D4  4EB9 0800 1244          jsr       _InstallExceptionHandler
+080007D8  003E      
+080007DA  504F      1245          addq.w    #8,A7
+                    1246   ; Timer2_Init();
+080007DC  4EB9 0800 1247          jsr       _Timer2_Init
+080007E0  0074      
+                    1248   ; while(1){;}
+                    1249   main_1:
+080007E2  60FE      1250          bra       main_1
+                    1251   ; }
+                    1252   ULDIV:
+080007E4  4E56 0000 1253          link    A6,#0
+080007E8  48E7 C000 1254          movem.l D0/D1,-(A7)
+080007EC  222E 0008 1255          move.l  8(A6),D1
+080007F0  202E 000C 1256          move.l  12(A6),D0
+080007F4  6036      1257          bra.s   ldiv_3
+                    1258   LDIV:
+080007F6  4E56 0000 1259          link    A6,#0
+080007FA  48E7 C000 1260          movem.l D0/D1,-(A7)
+080007FE  222E 0008 1261          move.l  8(A6),D1
+08000802  202E 000C 1262          move.l  12(A6),D0
+08000806  4A80      1263          tst.l   D0
+08000808  6A0E      1264          bpl.s   ldiv_1
+0800080A  4480      1265          neg.l   D0
+0800080C  4A81      1266          tst.l   D1
+0800080E  6A14      1267          bpl.s   ldiv_2
+08000810  4481      1268          neg.l   D1
+08000812  612A      1269          bsr.s   dodiv
+08000814  4481      1270          neg.l   D1
+08000816  6016      1271          bra.s   ldiv_4
+                    1272   ldiv_1:
+08000818  4A81      1273          tst.l   D1
+0800081A  6A10      1274          bpl.s   ldiv_3
+0800081C  4481      1275          neg.l   D1
+0800081E  611E      1276          bsr.s   dodiv
+08000820  4480      1277          neg.l   D0
+08000822  600A      1278          bra.s   ldiv_4
+                    1279   ldiv_2:
+08000824  6118      1280          bsr.s   dodiv
+08000826  4480      1281          neg.l   D0
+08000828  4481      1282          neg.l   D1
+0800082A  6002      1283          bra.s   ldiv_4
+                    1284   ldiv_3:
+0800082C  6110      1285          bsr.s   dodiv
+                    1286   ldiv_4:
+0800082E  2D40 0008 1287          move.l  D0,8(A6)
+08000832  2D41 000C 1288          move.l  D1,12(A6)
+08000836  4CDF 0003 1289          movem.l (A7)+,D0/D1
+0800083A  4E5E      1290          unlk    A6
+0800083C  4E75      1291          rts
+                    1292   dodiv:
+0800083E  0C81 0000 1293          cmpi.l  #$FFFF,D1
+08000842  FFFF      
+08000844  6236      1294          bhi.s   dodiv_2
+08000846  0C80 0000 1295          cmpi.l  #$FFFF,D0
+0800084A  FFFF      
+0800084C  6210      1296          bhi.s   dodiv_1
+0800084E  80C1      1297          divu    D1,D0
+08000850  2200      1298          move.l  D0,D1
+08000852  4241      1299          clr.w   D1
+08000854  4841      1300          swap    D1
+08000856  0280 0000 1301          andi.l  #$FFFF,D0
+0800085A  FFFF      
+0800085C  4E75      1302          rts
+                    1303   dodiv_1:
+0800085E  48A7 A000 1304          movem.w D0/D2,-(A7)
+08000862  4240      1305          clr.w   D0
+08000864  4840      1306          swap    D0
+08000866  80C1      1307          divu    D1,D0
+08000868  3400      1308          move.w  D0,D2
+0800086A  301F      1309          move.w  (A7)+,D0
+0800086C  80C1      1310          divu    D1,D0
+0800086E  4840      1311          swap    D0
+08000870  4281      1312          clr.l   D1
+08000872  3200      1313          move.w  D0,D1
+08000874  3002      1314          move.w  D2,D0
+08000876  4840      1315          swap    D0
+08000878  341F      1316          move.w  (A7)+,D2
+0800087A  4E75      1317          rts
+                    1318   dodiv_2:
+0800087C  48E7 3800 1319          movem.l D2/D3/D4,-(A7)
+08000880  2401      1320          move.l  D1,D2
+08000882  4242      1321          clr.w   D2
+08000884  4842      1322          swap    D2
+08000886  5282      1323          addq.l  #1,D2
+08000888  2600      1324          move.l  D0,D3
+0800088A  2801      1325          move.l  D1,D4
+0800088C  2202      1326          move.l  D2,D1
+0800088E  61CE      1327          bsr.s   dodiv_1
+08000890  2204      1328          move.l  D4,D1
+08000892  82C2      1329          divu    D2,D1
+08000894  80C1      1330          divu    D1,D0
+08000896  0280 0000 1331          andi.l  #$FFFF,D0
+0800089A  FFFF      
+                    1332   dodiv_3:
+0800089C  2204      1333          move.l  D4,D1
+0800089E  2404      1334          move.l  D4,D2
+080008A0  4842      1335          swap    D2
+080008A2  C2C0      1336          mulu    D0,D1
+080008A4  C4C0      1337          mulu    D0,D2
+080008A6  4842      1338          swap    D2
+080008A8  D282      1339          add.l   D2,D1
+080008AA  9283      1340          sub.l   D3,D1
+080008AC  620A      1341          bhi.s   dodiv_4
+080008AE  4481      1342          neg.l   D1
+080008B0  B881      1343          cmp.l   D1,D4
+080008B2  6208      1344          bhi.s   dodiv_5
+080008B4  5280      1345          addq.l  #1,D0
+080008B6  60E4      1346          bra.s   dodiv_3
+                    1347   dodiv_4:
+080008B8  5380      1348          subq.l  #1,D0
+080008BA  60E0      1349          bra.s   dodiv_3
+                    1350   dodiv_5:
+080008BC  4CDF 001C 1351          movem.l (A7)+,D2/D3/D4
+080008C0  4E75      1352          rts
+                    1353   _printf:
+080008C2  4E56 FFFC 1354          link      A6,#-4
+080008C6  48E7 2000 1355          movem.l   D2,-(A7)
+080008CA  41EE 0008 1356          lea       8(A6),A0
+080008CE  5848      1357          addq.w    #4,A0
+080008D0  2408      1358          move.l    A0,D2
+080008D2  2F02      1359          move.l    D2,-(A7)
+080008D4  2F2E 0008 1360          move.l    8(A6),-(A7)
+080008D8  42A7      1361          clr.l     -(A7)
+080008DA  6100 00CA 1362          bsr       _vsprintf
+080008DE  DEFC 000C 1363          add.w     #12,A7
+080008E2  2D40 FFFC 1364          move.l    D0,-4(A6)
+080008E6  4282      1365          clr.l     D2
+080008E8  202E FFFC 1366          move.l    -4(A6),D0
+080008EC  4CDF 0004 1367          movem.l   (A7)+,D2
+080008F0  4E5E      1368          unlk      A6
+080008F2  4E75      1369          rts
+                    1370   @vsprintf_copy:
+080008F4  4E56 0000 1371          link      A6,#0
+080008F8  206E 0008 1372          move.l    8(A6),A0
+080008FC  4A90      1373          tst.l     (A0)
+080008FE  6710      1374          beq.s     @vsprintf_copy_1
+08000900  202E 000C 1375          move.l    12(A6),D0
+08000904  206E 0008 1376          move.l    8(A6),A0
+08000908  2250      1377          move.l    (A0),A1
+0800090A  5290      1378          addq.l    #1,(A0)
+0800090C  1280      1379          move.b    D0,(A1)
+0800090E  600A      1380          bra.s     @vsprintf_copy_2
+                    1381   @vsprintf_copy_1:
+08000910  2F2E 000C 1382          move.l    12(A6),-(A7)
+08000914  6100 08FE 1383          bsr       _putch
+08000918  584F      1384          addq.w    #4,A7
+                    1385   @vsprintf_copy_2:
+0800091A  4E5E      1386          unlk      A6
+0800091C  4E75      1387          rts
+                    1388   @vsprintf_getval:
+0800091E  4E56 0000 1389          link      A6,#0
+08000922  48E7 3000 1390          movem.l   D2/D3,-(A7)
+08000926  242E 0008 1391          move.l    8(A6),D2
+0800092A  4283      1392          clr.l     D3
+0800092C  2042      1393          move.l    D2,A0
+0800092E  2050      1394          move.l    (A0),A0
+08000930  1010      1395          move.b    (A0),D0
+08000932  4880      1396          ext.w     D0
+08000934  48C0      1397          ext.l     D0
+08000936  0C80 0000 1398          cmp.l     #42,D0
+0800093A  002A      
+0800093C  6612      1399          bne.s     @vsprintf_getval_1
+0800093E  206E 000C 1400          move.l    12(A6),A0
+08000942  2250      1401          move.l    (A0),A1
+08000944  5890      1402          addq.l    #4,(A0)
+08000946  2611      1403          move.l    (A1),D3
+08000948  2042      1404          move.l    D2,A0
+0800094A  5290      1405          addq.l    #1,(A0)
+0800094C  6000 004E 1406          bra       @vsprintf_getval_5
+                    1407   @vsprintf_getval_1:
+08000950  2042      1408          move.l    D2,A0
+08000952  2050      1409          move.l    (A0),A0
+08000954  1010      1410          move.b    (A0),D0
+08000956  4880      1411          ext.w     D0
+08000958  48C0      1412          ext.l     D0
+0800095A  0C80 0000 1413          cmp.l     #48,D0
+0800095E  0030      
+08000960  6D00 003A 1414          blt       @vsprintf_getval_5
+08000964  2042      1415          move.l    D2,A0
+08000966  2050      1416          move.l    (A0),A0
+08000968  1010      1417          move.b    (A0),D0
+0800096A  4880      1418          ext.w     D0
+0800096C  48C0      1419          ext.l     D0
+0800096E  0C80 0000 1420          cmp.l     #57,D0
+08000972  0039      
+08000974  6E26      1421          bgt.s     @vsprintf_getval_5
+08000976  2F03      1422          move.l    D3,-(A7)
+08000978  4878 000A 1423          pea       10
+0800097C  6100 07F6 1424          bsr       LMUL
+08000980  2017      1425          move.l    (A7),D0
+08000982  504F      1426          addq.w    #8,A7
+08000984  2042      1427          move.l    D2,A0
+08000986  2250      1428          move.l    (A0),A1
+08000988  5290      1429          addq.l    #1,(A0)
+0800098A  1211      1430          move.b    (A1),D1
+0800098C  4881      1431          ext.w     D1
+0800098E  48C1      1432          ext.l     D1
+08000990  D081      1433          add.l     D1,D0
+08000992  0480 0000 1434          sub.l     #48,D0
+08000996  0030      
+08000998  2600      1435          move.l    D0,D3
+0800099A  60B4      1436          bra       @vsprintf_getval_1
+                    1437   @vsprintf_getval_5:
+0800099C  2003      1438          move.l    D3,D0
+0800099E  4CDF 000C 1439          movem.l   (A7)+,D2/D3
+080009A2  4E5E      1440          unlk      A6
+080009A4  4E75      1441          rts
+                    1442   _vsprintf:
+080009A6  4E56 FFCC 1443          link      A6,#-52
+080009AA  48E7 3F3C 1444          movem.l   D2/D3/D4/D5/D6/D7/A2/A3/A4/A5,-(A7)
+080009AE  45EE 0008 1445          lea       8(A6),A2
+080009B2  47F9 0800 1446          lea       @vsprintf_copy,A3
+080009B6  08F4      
+080009B8  49F9 0800 1447          lea       _ultoa,A4
+080009BC  1100      
+080009BE  4286      1448          clr.l     D6
+                    1449   vsprintf_1:
+080009C0  206E 000C 1450          move.l    12(A6),A0
+080009C4  4A10      1451          tst.b     (A0)
+080009C6  6700 0624 1452          beq       vsprintf_3
+080009CA  206E 000C 1453          move.l    12(A6),A0
+080009CE  1010      1454          move.b    (A0),D0
+080009D0  4880      1455          ext.w     D0
+080009D2  48C0      1456          ext.l     D0
+080009D4  0C80 0000 1457          cmp.l     #37,D0
+080009D8  0025      
+080009DA  671C      1458          beq.s     vsprintf_4
+080009DC  206E 000C 1459          move.l    12(A6),A0
+080009E0  52AE 000C 1460          addq.l    #1,12(A6)
+080009E4  1210      1461          move.b    (A0),D1
+080009E6  4881      1462          ext.w     D1
+080009E8  48C1      1463          ext.l     D1
+080009EA  2F01      1464          move.l    D1,-(A7)
+080009EC  2F0A      1465          move.l    A2,-(A7)
+080009EE  4E93      1466          jsr       (A3)
+080009F0  504F      1467          addq.w    #8,A7
+080009F2  5286      1468          addq.l    #1,D6
+080009F4  6000 05F2 1469          bra       vsprintf_2
+                    1470   vsprintf_4:
+080009F8  52AE 000C 1471          addq.l    #1,12(A6)
+080009FC  422E FFD3 1472          clr.b     -45(A6)
+08000A00  422E FFD2 1473          clr.b     -46(A6)
+08000A04  422E FFD0 1474          clr.b     -48(A6)
+08000A08  422E FFCF 1475          clr.b     -49(A6)
+08000A0C  422E FFCE 1476          clr.b     -50(A6)
+08000A10  422E FFCD 1477          clr.b     -51(A6)
+08000A14  42AE FFFC 1478          clr.l     -4(A6)
+08000A18  7AFF      1479          moveq     #-1,D5
+08000A1A  41EE FFDC 1480          lea       -36(A6),A0
+08000A1E  2608      1481          move.l    A0,D3
+08000A20  2408      1482          move.l    A0,D2
+                    1483   vsprintf_6:
+08000A22  206E 000C 1484          move.l    12(A6),A0
+08000A26  1010      1485          move.b    (A0),D0
+08000A28  4880      1486          ext.w     D0
+08000A2A  48C0      1487          ext.l     D0
+08000A2C  0C80 0000 1488          cmp.l     #43,D0
+08000A30  002B      
+08000A32  6730      1489          beq.s     vsprintf_12
+08000A34  6E18      1490          bgt.s     vsprintf_15
+08000A36  0C80 0000 1491          cmp.l     #35,D0
+08000A3A  0023      
+08000A3C  6700 003E 1492          beq       vsprintf_14
+08000A40  6E00 0046 1493          bgt       vsprintf_9
+08000A44  0C80 0000 1494          cmp.l     #32,D0
+08000A48  0020      
+08000A4A  6724      1495          beq.s     vsprintf_13
+08000A4C  603A      1496          bra.s     vsprintf_9
+                    1497   vsprintf_15:
+08000A4E  0C80 0000 1498          cmp.l     #45,D0
+08000A52  002D      
+08000A54  6702      1499          beq.s     vsprintf_11
+08000A56  6030      1500          bra.s     vsprintf_9
+                    1501   vsprintf_11:
+08000A58  1D7C 0001 1502          move.b    #1,-51(A6)
+08000A5C  FFCD      
+08000A5E  52AE 000C 1503          addq.l    #1,12(A6)
+08000A62  6026      1504          bra.s     vsprintf_7
+                    1505   vsprintf_12:
+08000A64  1D7C 0001 1506          move.b    #1,-50(A6)
+08000A68  FFCE      
+08000A6A  52AE 000C 1507          addq.l    #1,12(A6)
+08000A6E  601A      1508          bra.s     vsprintf_7
+                    1509   vsprintf_13:
+08000A70  1D7C 0001 1510          move.b    #1,-49(A6)
+08000A74  FFCF      
+08000A76  52AE 000C 1511          addq.l    #1,12(A6)
+08000A7A  600E      1512          bra.s     vsprintf_7
+                    1513   vsprintf_14:
+08000A7C  1D7C 0001 1514          move.b    #1,-48(A6)
+08000A80  FFD0      
+08000A82  52AE 000C 1515          addq.l    #1,12(A6)
+08000A86  6002      1516          bra.s     vsprintf_7
+                    1517   vsprintf_9:
+08000A88  6002      1518          bra.s     vsprintf_8
+                    1519   vsprintf_7:
+08000A8A  6096      1520          bra       vsprintf_6
+                    1521   vsprintf_8:
+08000A8C  206E 000C 1522          move.l    12(A6),A0
+08000A90  1010      1523          move.b    (A0),D0
+08000A92  4880      1524          ext.w     D0
+08000A94  48C0      1525          ext.l     D0
+08000A96  0C80 0000 1526          cmp.l     #48,D0
+08000A9A  0030      
+08000A9C  660A      1527          bne.s     vsprintf_16
+08000A9E  52AE 000C 1528          addq.l    #1,12(A6)
+08000AA2  1D7C 0001 1529          move.b    #1,-46(A6)
+08000AA6  FFD2      
+                    1530   vsprintf_16:
+08000AA8  486E 0010 1531          pea       16(A6)
+08000AAC  486E 000C 1532          pea       12(A6)
+08000AB0  6100 FE6C 1533          bsr       @vsprintf_getval
+08000AB4  504F      1534          addq.w    #8,A7
+08000AB6  2A40      1535          move.l    D0,A5
+08000AB8  206E 000C 1536          move.l    12(A6),A0
+08000ABC  1010      1537          move.b    (A0),D0
+08000ABE  4880      1538          ext.w     D0
+08000AC0  48C0      1539          ext.l     D0
+08000AC2  0C80 0000 1540          cmp.l     #46,D0
+08000AC6  002E      
+08000AC8  6614      1541          bne.s     vsprintf_18
+08000ACA  52AE 000C 1542          addq.l    #1,12(A6)
+08000ACE  486E 0010 1543          pea       16(A6)
+08000AD2  486E 000C 1544          pea       12(A6)
+08000AD6  6100 FE46 1545          bsr       @vsprintf_getval
+08000ADA  504F      1546          addq.w    #8,A7
+08000ADC  2A00      1547          move.l    D0,D5
+                    1548   vsprintf_18:
+08000ADE  206E 000C 1549          move.l    12(A6),A0
+08000AE2  1010      1550          move.b    (A0),D0
+08000AE4  4880      1551          ext.w     D0
+08000AE6  48C0      1552          ext.l     D0
+08000AE8  0C80 0000 1553          cmp.l     #108,D0
+08000AEC  006C      
+08000AEE  660A      1554          bne.s     vsprintf_20
+08000AF0  52AE 000C 1555          addq.l    #1,12(A6)
+08000AF4  1D7C 0001 1556          move.b    #1,-45(A6)
+08000AF8  FFD3      
+                    1557   vsprintf_20:
+08000AFA  206E 000C 1558          move.l    12(A6),A0
+08000AFE  1010      1559          move.b    (A0),D0
+08000B00  4880      1560          ext.w     D0
+08000B02  48C0      1561          ext.l     D0
+08000B04  0C80 0000 1562          cmp.l     #111,D0
+08000B08  006F      
+08000B0A  6700 00D4 1563          beq       vsprintf_27
+08000B0E  6E34      1564          bgt.s     vsprintf_33
+08000B10  0C80 0000 1565          cmp.l     #100,D0
+08000B14  0064      
+08000B16  6700 0054 1566          beq       vsprintf_24
+08000B1A  6E1C      1567          bgt.s     vsprintf_34
+08000B1C  0C80 0000 1568          cmp.l     #99,D0
+08000B20  0063      
+08000B22  6700 012C 1569          beq       vsprintf_30
+08000B26  6E00 016A 1570          bgt       vsprintf_22
+08000B2A  0C80 0000 1571          cmp.l     #88,D0
+08000B2E  0058      
+08000B30  6700 00E6 1572          beq       vsprintf_28
+08000B34  6000 015C 1573          bra       vsprintf_22
+                    1574   vsprintf_34:
+08000B38  0C80 0000 1575          cmp.l     #105,D0
+08000B3C  0069      
+08000B3E  672C      1576          beq.s     vsprintf_24
+08000B40  6000 0150 1577          bra       vsprintf_22
+                    1578   vsprintf_33:
+08000B44  0C80 0000 1579          cmp.l     #117,D0
+08000B48  0075      
+08000B4A  6700 005C 1580          beq       vsprintf_26
+08000B4E  6E0E      1581          bgt.s     vsprintf_35
+08000B50  0C80 0000 1582          cmp.l     #115,D0
+08000B54  0073      
+08000B56  6700 011C 1583          beq       vsprintf_31
+08000B5A  6000 0136 1584          bra       vsprintf_22
+                    1585   vsprintf_35:
+08000B5E  0C80 0000 1586          cmp.l     #120,D0
+08000B62  0078      
+08000B64  6700 00B2 1587          beq       vsprintf_28
+08000B68  6000 0128 1588          bra       vsprintf_22
+                    1589   vsprintf_24:
+08000B6C  4A2E FFD3 1590          tst.b     -45(A6)
+08000B70  671A      1591          beq.s     vsprintf_36
+08000B72  4878 000A 1592          pea       10
+08000B76  2F03      1593          move.l    D3,-(A7)
+08000B78  206E 0010 1594          move.l    16(A6),A0
+08000B7C  58AE 0010 1595          addq.l    #4,16(A6)
+08000B80  2F10      1596          move.l    (A0),-(A7)
+08000B82  6100 04F8 1597          bsr       _ltoa
+08000B86  DEFC 000C 1598          add.w     #12,A7
+08000B8A  6018      1599          bra.s     vsprintf_37
+                    1600   vsprintf_36:
+08000B8C  4878 000A 1601          pea       10
+08000B90  2F03      1602          move.l    D3,-(A7)
+08000B92  206E 0010 1603          move.l    16(A6),A0
+08000B96  58AE 0010 1604          addq.l    #4,16(A6)
+08000B9A  2F10      1605          move.l    (A0),-(A7)
+08000B9C  6100 04DE 1606          bsr       _ltoa
+08000BA0  DEFC 000C 1607          add.w     #12,A7
+                    1608   vsprintf_37:
+08000BA4  6000 00FA 1609          bra       vsprintf_23
+                    1610   vsprintf_26:
+08000BA8  4A2E FFD3 1611          tst.b     -45(A6)
+08000BAC  6718      1612          beq.s     vsprintf_38
+08000BAE  4878 000A 1613          pea       10
+08000BB2  2F03      1614          move.l    D3,-(A7)
+08000BB4  206E 0010 1615          move.l    16(A6),A0
+08000BB8  58AE 0010 1616          addq.l    #4,16(A6)
+08000BBC  2F10      1617          move.l    (A0),-(A7)
+08000BBE  4E94      1618          jsr       (A4)
+08000BC0  DEFC 000C 1619          add.w     #12,A7
+08000BC4  6016      1620          bra.s     vsprintf_39
+                    1621   vsprintf_38:
+08000BC6  4878 000A 1622          pea       10
+08000BCA  2F03      1623          move.l    D3,-(A7)
+08000BCC  206E 0010 1624          move.l    16(A6),A0
+08000BD0  58AE 0010 1625          addq.l    #4,16(A6)
+08000BD4  2F10      1626          move.l    (A0),-(A7)
+08000BD6  4E94      1627          jsr       (A4)
+08000BD8  DEFC 000C 1628          add.w     #12,A7
+                    1629   vsprintf_39:
+08000BDC  6000 00C2 1630          bra       vsprintf_23
+                    1631   vsprintf_27:
+08000BE0  4A2E FFD3 1632          tst.b     -45(A6)
+08000BE4  6718      1633          beq.s     vsprintf_40
+08000BE6  4878 0008 1634          pea       8
+08000BEA  2F03      1635          move.l    D3,-(A7)
+08000BEC  206E 0010 1636          move.l    16(A6),A0
+08000BF0  58AE 0010 1637          addq.l    #4,16(A6)
+08000BF4  2F10      1638          move.l    (A0),-(A7)
+08000BF6  4E94      1639          jsr       (A4)
+08000BF8  DEFC 000C 1640          add.w     #12,A7
+08000BFC  6016      1641          bra.s     vsprintf_41
+                    1642   vsprintf_40:
+08000BFE  4878 0008 1643          pea       8
+08000C02  2F03      1644          move.l    D3,-(A7)
+08000C04  206E 0010 1645          move.l    16(A6),A0
+08000C08  58AE 0010 1646          addq.l    #4,16(A6)
+08000C0C  2F10      1647          move.l    (A0),-(A7)
+08000C0E  4E94      1648          jsr       (A4)
+08000C10  DEFC 000C 1649          add.w     #12,A7
+                    1650   vsprintf_41:
+08000C14  6000 008A 1651          bra       vsprintf_23
+                    1652   vsprintf_28:
+08000C18  4A2E FFD3 1653          tst.b     -45(A6)
+08000C1C  6718      1654          beq.s     vsprintf_42
+08000C1E  4878 0010 1655          pea       16
+08000C22  2F03      1656          move.l    D3,-(A7)
+08000C24  206E 0010 1657          move.l    16(A6),A0
+08000C28  58AE 0010 1658          addq.l    #4,16(A6)
+08000C2C  2F10      1659          move.l    (A0),-(A7)
+08000C2E  4E94      1660          jsr       (A4)
+08000C30  DEFC 000C 1661          add.w     #12,A7
+08000C34  6016      1662          bra.s     vsprintf_43
+                    1663   vsprintf_42:
+08000C36  4878 0010 1664          pea       16
+08000C3A  2F03      1665          move.l    D3,-(A7)
+08000C3C  206E 0010 1666          move.l    16(A6),A0
+08000C40  58AE 0010 1667          addq.l    #4,16(A6)
+08000C44  2F10      1668          move.l    (A0),-(A7)
+08000C46  4E94      1669          jsr       (A4)
+08000C48  DEFC 000C 1670          add.w     #12,A7
+                    1671   vsprintf_43:
+08000C4C  6000 0052 1672          bra       vsprintf_23
+                    1673   vsprintf_30:
+08000C50  206E 0010 1674          move.l    16(A6),A0
+08000C54  58AE 0010 1675          addq.l    #4,16(A6)
+08000C58  2010      1676          move.l    (A0),D0
+08000C5A  2042      1677          move.l    D2,A0
+08000C5C  5282      1678          addq.l    #1,D2
+08000C5E  1080      1679          move.b    D0,(A0)
+08000C60  2042      1680          move.l    D2,A0
+08000C62  4210      1681          clr.b     (A0)
+08000C64  200D      1682          move.l    A5,D0
+08000C66  6704      1683          beq.s     vsprintf_44
+08000C68  200D      1684          move.l    A5,D0
+08000C6A  6002      1685          bra.s     vsprintf_45
+                    1686   vsprintf_44:
+08000C6C  7001      1687          moveq     #1,D0
+                    1688   vsprintf_45:
+08000C6E  2A00      1689          move.l    D0,D5
+08000C70  6000 002E 1690          bra       vsprintf_23
+                    1691   vsprintf_31:
+08000C74  206E 0010 1692          move.l    16(A6),A0
+08000C78  58AE 0010 1693          addq.l    #4,16(A6)
+08000C7C  2610      1694          move.l    (A0),D3
+08000C7E  0C85 FFFF 1695          cmp.l     #-1,D5
+08000C82  FFFF      
+08000C84  660A      1696          bne.s     vsprintf_46
+08000C86  2F03      1697          move.l    D3,-(A7)
+08000C88  6100 0578 1698          bsr       _strlen
+08000C8C  584F      1699          addq.w    #4,A7
+08000C8E  2A00      1700          move.l    D0,D5
+                    1701   vsprintf_46:
+08000C90  600E      1702          bra.s     vsprintf_23
+                    1703   vsprintf_22:
+08000C92  206E 000C 1704          move.l    12(A6),A0
+08000C96  2242      1705          move.l    D2,A1
+08000C98  5282      1706          addq.l    #1,D2
+08000C9A  1290      1707          move.b    (A0),(A1)
+08000C9C  2042      1708          move.l    D2,A0
+08000C9E  4210      1709          clr.b     (A0)
+                    1710   vsprintf_23:
+08000CA0  2F03      1711          move.l    D3,-(A7)
+08000CA2  6100 055E 1712          bsr       _strlen
+08000CA6  584F      1713          addq.w    #4,A7
+08000CA8  1800      1714          move.b    D0,D4
+08000CAA  206E 000C 1715          move.l    12(A6),A0
+08000CAE  1010      1716          move.b    (A0),D0
+08000CB0  4880      1717          ext.w     D0
+08000CB2  48C0      1718          ext.l     D0
+08000CB4  0C80 0000 1719          cmp.l     #115,D0
+08000CB8  0073      
+08000CBA  6618      1720          bne.s     vsprintf_48
+08000CBC  0C85 0000 1721          cmp.l     #0,D5
+08000CC0  0000      
+08000CC2  6D10      1722          blt.s     vsprintf_48
+08000CC4  4884      1723          ext.w     D4
+08000CC6  48C4      1724          ext.l     D4
+08000CC8  B885      1725          cmp.l     D5,D4
+08000CCA  6F04      1726          ble.s     vsprintf_50
+08000CCC  1005      1727          move.b    D5,D0
+08000CCE  6002      1728          bra.s     vsprintf_51
+                    1729   vsprintf_50:
+08000CD0  1004      1730          move.b    D4,D0
+                    1731   vsprintf_51:
+08000CD2  1800      1732          move.b    D0,D4
+                    1733   vsprintf_48:
+08000CD4  206E 000C 1734          move.l    12(A6),A0
+08000CD8  1010      1735          move.b    (A0),D0
+08000CDA  4880      1736          ext.w     D0
+08000CDC  48C0      1737          ext.l     D0
+08000CDE  0C80 0000 1738          cmp.l     #88,D0
+08000CE2  0058      
+08000CE4  6600 0026 1739          bne       vsprintf_56
+08000CE8  41EE FFDC 1740          lea       -36(A6),A0
+08000CEC  2408      1741          move.l    A0,D2
+                    1742   vsprintf_54:
+08000CEE  2042      1743          move.l    D2,A0
+08000CF0  4A10      1744          tst.b     (A0)
+08000CF2  6718      1745          beq.s     vsprintf_56
+08000CF4  2042      1746          move.l    D2,A0
+08000CF6  1210      1747          move.b    (A0),D1
+08000CF8  4881      1748          ext.w     D1
+08000CFA  48C1      1749          ext.l     D1
+08000CFC  2F01      1750          move.l    D1,-(A7)
+08000CFE  6100 0544 1751          bsr       _toupper
+08000D02  584F      1752          addq.w    #4,A7
+08000D04  2042      1753          move.l    D2,A0
+08000D06  1080      1754          move.b    D0,(A0)
+08000D08  5282      1755          addq.l    #1,D2
+08000D0A  60E2      1756          bra       vsprintf_54
+                    1757   vsprintf_56:
+08000D0C  7E00      1758          moveq     #0,D7
+08000D0E  41EE FFD4 1759          lea       -44(A6),A0
+08000D12  2408      1760          move.l    A0,D2
+08000D14  206E 000C 1761          move.l    12(A6),A0
+08000D18  1010      1762          move.b    (A0),D0
+08000D1A  4880      1763          ext.w     D0
+08000D1C  48C0      1764          ext.l     D0
+08000D1E  0C80 0000 1765          cmp.l     #100,D0
+08000D22  0064      
+08000D24  6714      1766          beq.s     vsprintf_59
+08000D26  206E 000C 1767          move.l    12(A6),A0
+08000D2A  1010      1768          move.b    (A0),D0
+08000D2C  4880      1769          ext.w     D0
+08000D2E  48C0      1770          ext.l     D0
+08000D30  0C80 0000 1771          cmp.l     #105,D0
+08000D34  0069      
+08000D36  6600 0076 1772          bne       vsprintf_65
+                    1773   vsprintf_59:
+08000D3A  4A2E FFCE 1774          tst.b     -50(A6)
+08000D3E  6612      1775          bne.s     vsprintf_62
+08000D40  2043      1776          move.l    D3,A0
+08000D42  1010      1777          move.b    (A0),D0
+08000D44  4880      1778          ext.w     D0
+08000D46  48C0      1779          ext.l     D0
+08000D48  0C80 0000 1780          cmp.l     #45,D0
+08000D4C  002D      
+08000D4E  6600 002E 1781          bne       vsprintf_60
+                    1782   vsprintf_62:
+08000D52  2043      1783          move.l    D3,A0
+08000D54  1010      1784          move.b    (A0),D0
+08000D56  4880      1785          ext.w     D0
+08000D58  48C0      1786          ext.l     D0
+08000D5A  0C80 0000 1787          cmp.l     #45,D0
+08000D5E  002D      
+08000D60  660E      1788          bne.s     vsprintf_63
+08000D62  2043      1789          move.l    D3,A0
+08000D64  5283      1790          addq.l    #1,D3
+08000D66  2242      1791          move.l    D2,A1
+08000D68  5282      1792          addq.l    #1,D2
+08000D6A  1290      1793          move.b    (A0),(A1)
+08000D6C  5304      1794          subq.b    #1,D4
+08000D6E  6008      1795          bra.s     vsprintf_64
+                    1796   vsprintf_63:
+08000D70  2042      1797          move.l    D2,A0
+08000D72  5282      1798          addq.l    #1,D2
+08000D74  10BC 002B 1799          move.b    #43,(A0)
+                    1800   vsprintf_64:
+08000D78  5287      1801          addq.l    #1,D7
+08000D7A  6000 0032 1802          bra       vsprintf_65
+                    1803   vsprintf_60:
+08000D7E  4A2E FFCF 1804          tst.b     -49(A6)
+08000D82  6700 002A 1805          beq       vsprintf_65
+08000D86  2043      1806          move.l    D3,A0
+08000D88  1010      1807          move.b    (A0),D0
+08000D8A  4880      1808          ext.w     D0
+08000D8C  48C0      1809          ext.l     D0
+08000D8E  0C80 0000 1810          cmp.l     #45,D0
+08000D92  002D      
+08000D94  660E      1811          bne.s     vsprintf_67
+08000D96  2043      1812          move.l    D3,A0
+08000D98  5283      1813          addq.l    #1,D3
+08000D9A  2242      1814          move.l    D2,A1
+08000D9C  5282      1815          addq.l    #1,D2
+08000D9E  1290      1816          move.b    (A0),(A1)
+08000DA0  5304      1817          subq.b    #1,D4
+08000DA2  6008      1818          bra.s     vsprintf_68
+                    1819   vsprintf_67:
+08000DA4  2042      1820          move.l    D2,A0
+08000DA6  5282      1821          addq.l    #1,D2
+08000DA8  10BC 0020 1822          move.b    #32,(A0)
+                    1823   vsprintf_68:
+08000DAC  5287      1824          addq.l    #1,D7
+                    1825   vsprintf_65:
+08000DAE  4A2E FFD0 1826          tst.b     -48(A6)
+08000DB2  6700 0066 1827          beq       vsprintf_77
+08000DB6  206E 000C 1828          move.l    12(A6),A0
+08000DBA  1010      1829          move.b    (A0),D0
+08000DBC  4880      1830          ext.w     D0
+08000DBE  48C0      1831          ext.l     D0
+08000DC0  0C80 0000 1832          cmp.l     #111,D0
+08000DC4  006F      
+08000DC6  671A      1833          beq.s     vsprintf_73
+08000DC8  6E0C      1834          bgt.s     vsprintf_76
+08000DCA  0C80 0000 1835          cmp.l     #88,D0
+08000DCE  0058      
+08000DD0  6710      1836          beq.s     vsprintf_73
+08000DD2  6000 0046 1837          bra       vsprintf_77
+                    1838   vsprintf_76:
+08000DD6  0C80 0000 1839          cmp.l     #120,D0
+08000DDA  0078      
+08000DDC  6704      1840          beq.s     vsprintf_73
+08000DDE  6000 003A 1841          bra       vsprintf_77
+                    1842   vsprintf_73:
+08000DE2  2042      1843          move.l    D2,A0
+08000DE4  5282      1844          addq.l    #1,D2
+08000DE6  10BC 0030 1845          move.b    #48,(A0)
+08000DEA  5287      1846          addq.l    #1,D7
+08000DEC  206E 000C 1847          move.l    12(A6),A0
+08000DF0  1010      1848          move.b    (A0),D0
+08000DF2  4880      1849          ext.w     D0
+08000DF4  48C0      1850          ext.l     D0
+08000DF6  0C80 0000 1851          cmp.l     #120,D0
+08000DFA  0078      
+08000DFC  6712      1852          beq.s     vsprintf_79
+08000DFE  206E 000C 1853          move.l    12(A6),A0
+08000E02  1010      1854          move.b    (A0),D0
+08000E04  4880      1855          ext.w     D0
+08000E06  48C0      1856          ext.l     D0
+08000E08  0C80 0000 1857          cmp.l     #88,D0
+08000E0C  0058      
+08000E0E  660A      1858          bne.s     vsprintf_77
+                    1859   vsprintf_79:
+08000E10  2042      1860          move.l    D2,A0
+08000E12  5282      1861          addq.l    #1,D2
+08000E14  10BC 0078 1862          move.b    #120,(A0)
+08000E18  5287      1863          addq.l    #1,D7
+                    1864   vsprintf_77:
+08000E1A  2042      1865          move.l    D2,A0
+08000E1C  4210      1866          clr.b     (A0)
+08000E1E  206E 000C 1867          move.l    12(A6),A0
+08000E22  1010      1868          move.b    (A0),D0
+08000E24  4880      1869          ext.w     D0
+08000E26  48C0      1870          ext.l     D0
+08000E28  0C80 0000 1871          cmp.l     #105,D0
+08000E2C  0069      
+08000E2E  6700 0076 1872          beq       vsprintf_82
+08000E32  6E42      1873          bgt.s     vsprintf_93
+08000E34  0C80 0000 1874          cmp.l     #99,D0
+08000E38  0063      
+08000E3A  6700 0084 1875          beq       vsprintf_96
+08000E3E  6E1C      1876          bgt.s     vsprintf_94
+08000E40  0C80 0000 1877          cmp.l     #88,D0
+08000E44  0058      
+08000E46  6700 005E 1878          beq       vsprintf_82
+08000E4A  6E00 0184 1879          bgt       vsprintf_80
+08000E4E  0C80 0000 1880          cmp.l     #69,D0
+08000E52  0045      
+08000E54  6700 0050 1881          beq       vsprintf_82
+08000E58  6000 0176 1882          bra       vsprintf_80
+                    1883   vsprintf_94:
+08000E5C  0C80 0000 1884          cmp.l     #101,D0
+08000E60  0065      
+08000E62  6700 0042 1885          beq       vsprintf_82
+08000E66  6E00 0168 1886          bgt       vsprintf_80
+08000E6A  0C80 0000 1887          cmp.l     #100,D0
+08000E6E  0064      
+08000E70  6734      1888          beq.s     vsprintf_82
+08000E72  6000 015C 1889          bra       vsprintf_80
+                    1890   vsprintf_93:
+08000E76  0C80 0000 1891          cmp.l     #117,D0
+08000E7A  0075      
+08000E7C  6728      1892          beq.s     vsprintf_82
+08000E7E  6E1A      1893          bgt.s     vsprintf_95
+08000E80  0C80 0000 1894          cmp.l     #115,D0
+08000E84  0073      
+08000E86  6700 0038 1895          beq       vsprintf_96
+08000E8A  6E00 0144 1896          bgt       vsprintf_80
+08000E8E  0C80 0000 1897          cmp.l     #111,D0
+08000E92  006F      
+08000E94  6710      1898          beq.s     vsprintf_82
+08000E96  6000 0138 1899          bra       vsprintf_80
+                    1900   vsprintf_95:
+08000E9A  0C80 0000 1901          cmp.l     #120,D0
+08000E9E  0078      
+08000EA0  6704      1902          beq.s     vsprintf_82
+08000EA2  6000 012C 1903          bra       vsprintf_80
+                    1904   vsprintf_82:
+08000EA6  4A2E FFD2 1905          tst.b     -46(A6)
+08000EAA  6714      1906          beq.s     vsprintf_96
+08000EAC  4A2E FFCD 1907          tst.b     -51(A6)
+08000EB0  660E      1908          bne.s     vsprintf_96
+08000EB2  200D      1909          move.l    A5,D0
+08000EB4  9087      1910          sub.l     D7,D0
+08000EB6  4884      1911          ext.w     D4
+08000EB8  48C4      1912          ext.l     D4
+08000EBA  9084      1913          sub.l     D4,D0
+08000EBC  2D40 FFFC 1914          move.l    D0,-4(A6)
+                    1915   vsprintf_96:
+08000EC0  202E FFFC 1916          move.l    -4(A6),D0
+08000EC4  0C80 0000 1917          cmp.l     #0,D0
+08000EC8  0000      
+08000ECA  6C04      1918          bge.s     vsprintf_98
+08000ECC  42AE FFFC 1919          clr.l     -4(A6)
+                    1920   vsprintf_98:
+08000ED0  4A2E FFCD 1921          tst.b     -51(A6)
+08000ED4  6600 0030 1922          bne       vsprintf_104
+08000ED8  4884      1923          ext.w     D4
+08000EDA  48C4      1924          ext.l     D4
+08000EDC  2004      1925          move.l    D4,D0
+08000EDE  D0AE FFFC 1926          add.l     -4(A6),D0
+08000EE2  D087      1927          add.l     D7,D0
+08000EE4  1D40 FFD1 1928          move.b    D0,-47(A6)
+                    1929   vsprintf_102:
+08000EE8  102E FFD1 1930          move.b    -47(A6),D0
+08000EEC  4880      1931          ext.w     D0
+08000EEE  48C0      1932          ext.l     D0
+08000EF0  220D      1933          move.l    A5,D1
+08000EF2  534D      1934          subq.w    #1,A5
+08000EF4  B081      1935          cmp.l     D1,D0
+08000EF6  6C0E      1936          bge.s     vsprintf_104
+08000EF8  4878 0020 1937          pea       32
+08000EFC  2F0A      1938          move.l    A2,-(A7)
+08000EFE  4E93      1939          jsr       (A3)
+08000F00  504F      1940          addq.w    #8,A7
+08000F02  5286      1941          addq.l    #1,D6
+08000F04  60E2      1942          bra       vsprintf_102
+                    1943   vsprintf_104:
+08000F06  41EE FFD4 1944          lea       -44(A6),A0
+08000F0A  2408      1945          move.l    A0,D2
+                    1946   vsprintf_105:
+08000F0C  2042      1947          move.l    D2,A0
+08000F0E  4A10      1948          tst.b     (A0)
+08000F10  6716      1949          beq.s     vsprintf_107
+08000F12  2042      1950          move.l    D2,A0
+08000F14  5282      1951          addq.l    #1,D2
+08000F16  1210      1952          move.b    (A0),D1
+08000F18  4881      1953          ext.w     D1
+08000F1A  48C1      1954          ext.l     D1
+08000F1C  2F01      1955          move.l    D1,-(A7)
+08000F1E  2F0A      1956          move.l    A2,-(A7)
+08000F20  4E93      1957          jsr       (A3)
+08000F22  504F      1958          addq.w    #8,A7
+08000F24  5286      1959          addq.l    #1,D6
+08000F26  60E4      1960          bra       vsprintf_105
+                    1961   vsprintf_107:
+08000F28  202E FFFC 1962          move.l    -4(A6),D0
+08000F2C  1D40 FFD1 1963          move.b    D0,-47(A6)
+                    1964   vsprintf_108:
+08000F30  102E FFD1 1965          move.b    -47(A6),D0
+08000F34  532E FFD1 1966          subq.b    #1,-47(A6)
+08000F38  4A00      1967          tst.b     D0
+08000F3A  670E      1968          beq.s     vsprintf_110
+08000F3C  4878 0030 1969          pea       48
+08000F40  2F0A      1970          move.l    A2,-(A7)
+08000F42  4E93      1971          jsr       (A3)
+08000F44  504F      1972          addq.w    #8,A7
+08000F46  5286      1973          addq.l    #1,D6
+08000F48  60E6      1974          bra       vsprintf_108
+                    1975   vsprintf_110:
+08000F4A  2043      1976          move.l    D3,A0
+08000F4C  4A10      1977          tst.b     (A0)
+08000F4E  6700 0048 1978          beq       vsprintf_113
+08000F52  206E 000C 1979          move.l    12(A6),A0
+08000F56  1010      1980          move.b    (A0),D0
+08000F58  4880      1981          ext.w     D0
+08000F5A  48C0      1982          ext.l     D0
+08000F5C  0C80 0000 1983          cmp.l     #115,D0
+08000F60  0073      
+08000F62  670C      1984          beq.s     vsprintf_116
+08000F64  6E18      1985          bgt.s     vsprintf_119
+08000F66  0C80 0000 1986          cmp.l     #99,D0
+08000F6A  0063      
+08000F6C  6702      1987          beq.s     vsprintf_116
+08000F6E  600E      1988          bra.s     vsprintf_119
+                    1989   vsprintf_116:
+08000F70  2005      1990          move.l    D5,D0
+08000F72  5385      1991          subq.l    #1,D5
+08000F74  0C80 0000 1992          cmp.l     #0,D0
+08000F78  0000      
+08000F7A  6E02      1993          bgt.s     vsprintf_119
+08000F7C  6016      1994          bra.s     vsprintf_115
+                    1995   vsprintf_119:
+08000F7E  2043      1996          move.l    D3,A0
+08000F80  5283      1997          addq.l    #1,D3
+08000F82  1210      1998          move.b    (A0),D1
+08000F84  4881      1999          ext.w     D1
+08000F86  48C1      2000          ext.l     D1
+08000F88  2F01      2001          move.l    D1,-(A7)
+08000F8A  2F0A      2002          move.l    A2,-(A7)
+08000F8C  4E93      2003          jsr       (A3)
+08000F8E  504F      2004          addq.w    #8,A7
+08000F90  5286      2005          addq.l    #1,D6
+08000F92  6002      2006          bra.s     vsprintf_112
+                    2007   vsprintf_115:
+08000F94  6002      2008          bra.s     vsprintf_113
+                    2009   vsprintf_112:
+08000F96  60B2      2010          bra       vsprintf_110
+                    2011   vsprintf_113:
+08000F98  4A2E FFCD 2012          tst.b     -51(A6)
+08000F9C  6700 0030 2013          beq       vsprintf_125
+08000FA0  4884      2014          ext.w     D4
+08000FA2  48C4      2015          ext.l     D4
+08000FA4  2004      2016          move.l    D4,D0
+08000FA6  D0AE FFFC 2017          add.l     -4(A6),D0
+08000FAA  D087      2018          add.l     D7,D0
+08000FAC  1D40 FFD1 2019          move.b    D0,-47(A6)
+                    2020   vsprintf_123:
+08000FB0  102E FFD1 2021          move.b    -47(A6),D0
+08000FB4  4880      2022          ext.w     D0
+08000FB6  48C0      2023          ext.l     D0
+08000FB8  220D      2024          move.l    A5,D1
+08000FBA  534D      2025          subq.w    #1,A5
+08000FBC  B081      2026          cmp.l     D1,D0
+08000FBE  6C0E      2027          bge.s     vsprintf_125
+08000FC0  4878 0020 2028          pea       32
+08000FC4  2F0A      2029          move.l    A2,-(A7)
+08000FC6  4E93      2030          jsr       (A3)
+08000FC8  504F      2031          addq.w    #8,A7
+08000FCA  5386      2032          subq.l    #1,D6
+08000FCC  60E2      2033          bra       vsprintf_123
+                    2034   vsprintf_125:
+08000FCE  6014      2035          bra.s     vsprintf_81
+                    2036   vsprintf_80:
+08000FD0  206E 000C 2037          move.l    12(A6),A0
+08000FD4  1210      2038          move.b    (A0),D1
+08000FD6  4881      2039          ext.w     D1
+08000FD8  48C1      2040          ext.l     D1
+08000FDA  2F01      2041          move.l    D1,-(A7)
+08000FDC  2F0A      2042          move.l    A2,-(A7)
+08000FDE  4E93      2043          jsr       (A3)
+08000FE0  504F      2044          addq.w    #8,A7
+08000FE2  5286      2045          addq.l    #1,D6
+                    2046   vsprintf_81:
+08000FE4  52AE 000C 2047          addq.l    #1,12(A6)
+                    2048   vsprintf_2:
+08000FE8  6000 F9D6 2049          bra       vsprintf_1
+                    2050   vsprintf_3:
+08000FEC  4A92      2051          tst.l     (A2)
+08000FEE  6710      2052          beq.s     vsprintf_126
+08000FF0  4201      2053          clr.b     D1
+08000FF2  C2BC 0000 2054          and.l     #255,D1
+08000FF6  00FF      
+08000FF8  2F01      2055          move.l    D1,-(A7)
+08000FFA  2F0A      2056          move.l    A2,-(A7)
+08000FFC  4E93      2057          jsr       (A3)
+08000FFE  504F      2058          addq.w    #8,A7
+                    2059   vsprintf_126:
+08001000  2006      2060          move.l    D6,D0
+08001002  4CDF 3CFC 2061          movem.l   (A7)+,D2/D3/D4/D5/D6/D7/A2/A3/A4/A5
+08001006  4E5E      2062          unlk      A6
+08001008  4E75      2063          rts
+                    2064   @itoa_convert:
+0800100A  4E56 0000 2065          link      A6,#0
+0800100E  48E7 3C00 2066          movem.l   D2/D3/D4/D5,-(A7)
+08001012  242E 0008 2067          move.l    8(A6),D2
+08001016  262E 0010 2068          move.l    16(A6),D3
+0800101A  2A2E 000C 2069          move.l    12(A6),D5
+0800101E  2F05      2070          move.l    D5,-(A7)
+08001020  2F03      2071          move.l    D3,-(A7)
+08001022  6100 F7C0 2072          bsr       ULDIV
+08001026  202F 0004 2073          move.l    4(A7),D0
+0800102A  504F      2074          addq.w    #8,A7
+0800102C  2800      2075          move.l    D0,D4
+0800102E  BA83      2076          cmp.l     D3,D5
+08001030  651A      2077          blo.s     @itoa_convert_1
+08001032  2F03      2078          move.l    D3,-(A7)
+08001034  2F05      2079          move.l    D5,-(A7)
+08001036  2F03      2080          move.l    D3,-(A7)
+08001038  6100 F7AA 2081          bsr       ULDIV
+0800103C  2217      2082          move.l    (A7),D1
+0800103E  504F      2083          addq.w    #8,A7
+08001040  2F01      2084          move.l    D1,-(A7)
+08001042  2F02      2085          move.l    D2,-(A7)
+08001044  61C4      2086          bsr       @itoa_convert
+08001046  DEFC 000C 2087          add.w     #12,A7
+0800104A  2400      2088          move.l    D0,D2
+                    2089   @itoa_convert_1:
+0800104C  0C84 0000 2090          cmp.l     #9,D4
+08001050  0009      
+08001052  6E0A      2091          bgt.s     @itoa_convert_3
+08001054  2004      2092          move.l    D4,D0
+08001056  0680 0000 2093          add.l     #48,D0
+0800105A  0030      
+0800105C  600E      2094          bra.s     @itoa_convert_4
+                    2095   @itoa_convert_3:
+0800105E  2004      2096          move.l    D4,D0
+08001060  0680 0000 2097          add.l     #97,D0
+08001064  0061      
+08001066  0480 0000 2098          sub.l     #10,D0
+0800106A  000A      
+                    2099   @itoa_convert_4:
+0800106C  2042      2100          move.l    D2,A0
+0800106E  1080      2101          move.b    D0,(A0)
+08001070  2002      2102          move.l    D2,D0
+08001072  5280      2103          addq.l    #1,D0
+08001074  4CDF 003C 2104          movem.l   (A7)+,D2/D3/D4/D5
+08001078  4E5E      2105          unlk      A6
+0800107A  4E75      2106          rts
+                    2107   _ltoa:
+0800107C  4E56 0000 2108          link      A6,#0
+08001080  48E7 3C00 2109          movem.l   D2/D3/D4/D5,-(A7)
+08001084  242E 0008 2110          move.l    8(A6),D2
+08001088  262E 000C 2111          move.l    12(A6),D3
+0800108C  2A2E 0010 2112          move.l    16(A6),D5
+08001090  2803      2113          move.l    D3,D4
+08001092  0C85 0000 2114          cmp.l     #2,D5
+08001096  0002      
+08001098  6D08      2115          blt.s     ltoa_3
+0800109A  0C85 0000 2116          cmp.l     #36,D5
+0800109E  0024      
+080010A0  6F06      2117          ble.s     ltoa_1
+                    2118   ltoa_3:
+080010A2  2003      2119          move.l    D3,D0
+080010A4  6000 0052 2120          bra       ltoa_4
+                    2121   ltoa_1:
+080010A8  0C85 0000 2122          cmp.l     #10,D5
+080010AC  000A      
+080010AE  6600 0032 2123          bne       ltoa_5
+080010B2  0C82 0000 2124          cmp.l     #0,D2
+080010B6  0000      
+080010B8  6C28      2125          bge.s     ltoa_5
+080010BA  2002      2126          move.l    D2,D0
+080010BC  4480      2127          neg.l     D0
+080010BE  2400      2128          move.l    D0,D2
+080010C0  0C82 0000 2129          cmp.l     #0,D2
+080010C4  0000      
+080010C6  6C12      2130          bge.s     ltoa_7
+080010C8  4879 0800 2131          pea       @itoa_1
+080010CC  1514      
+080010CE  2F03      2132          move.l    D3,-(A7)
+080010D0  6100 019E 2133          bsr       _strcpy
+080010D4  504F      2134          addq.w    #8,A7
+080010D6  2003      2135          move.l    D3,D0
+080010D8  601E      2136          bra.s     ltoa_4
+                    2137   ltoa_7:
+080010DA  2044      2138          move.l    D4,A0
+080010DC  5284      2139          addq.l    #1,D4
+080010DE  10BC 002D 2140          move.b    #45,(A0)
+                    2141   ltoa_5:
+080010E2  2F05      2142          move.l    D5,-(A7)
+080010E4  2F02      2143          move.l    D2,-(A7)
+080010E6  2F04      2144          move.l    D4,-(A7)
+080010E8  6100 FF20 2145          bsr       @itoa_convert
+080010EC  DEFC 000C 2146          add.w     #12,A7
+080010F0  2800      2147          move.l    D0,D4
+080010F2  2044      2148          move.l    D4,A0
+080010F4  4210      2149          clr.b     (A0)
+080010F6  2003      2150          move.l    D3,D0
+                    2151   ltoa_4:
+080010F8  4CDF 003C 2152          movem.l   (A7)+,D2/D3/D4/D5
+080010FC  4E5E      2153          unlk      A6
+080010FE  4E75      2154          rts
+                    2155   _ultoa:
+08001100  4E56 0000 2156          link      A6,#0
+08001104  48E7 3800 2157          movem.l   D2/D3/D4,-(A7)
+08001108  262E 0010 2158          move.l    16(A6),D3
+0800110C  282E 000C 2159          move.l    12(A6),D4
+08001110  2404      2160          move.l    D4,D2
+08001112  0C83 0000 2161          cmp.l     #2,D3
+08001116  0002      
+08001118  6D08      2162          blt.s     ultoa_3
+0800111A  0C83 0000 2163          cmp.l     #36,D3
+0800111E  0024      
+08001120  6F04      2164          ble.s     ultoa_1
+                    2165   ultoa_3:
+08001122  2004      2166          move.l    D4,D0
+08001124  6018      2167          bra.s     ultoa_4
+                    2168   ultoa_1:
+08001126  2F03      2169          move.l    D3,-(A7)
+08001128  2F2E 0008 2170          move.l    8(A6),-(A7)
+0800112C  2F02      2171          move.l    D2,-(A7)
+0800112E  6100 FEDA 2172          bsr       @itoa_convert
+08001132  DEFC 000C 2173          add.w     #12,A7
+08001136  2400      2174          move.l    D0,D2
+08001138  2042      2175          move.l    D2,A0
+0800113A  4210      2176          clr.b     (A0)
+0800113C  2004      2177          move.l    D4,D0
+                    2178   ultoa_4:
+0800113E  4CDF 001C 2179          movem.l   (A7)+,D2/D3/D4
+08001142  4E5E      2180          unlk      A6
+08001144  4E75      2181          rts
+                    2182   _itoa:
+08001146  4E56 0000 2183          link      A6,#0
+0800114A  2F2E 0010 2184          move.l    16(A6),-(A7)
+0800114E  2F2E 000C 2185          move.l    12(A6),-(A7)
+08001152  2F2E 0008 2186          move.l    8(A6),-(A7)
+08001156  6100 FF24 2187          bsr       _ltoa
+0800115A  DEFC 000C 2188          add.w     #12,A7
+0800115E  4E5E      2189          unlk      A6
+08001160  4E75      2190          rts
+                    2191   ULMUL:
+08001162  4E56 0000 2192          link    A6,#0
+08001166  48E7 C000 2193          movem.l D0/D1,-(A7)
+0800116A  222E 0008 2194          move.l  8(A6),D1
+0800116E  202E 000C 2195          move.l  12(A6),D0
+08001172  602C      2196          bra.s   lmul_3
+                    2197   LMUL:
+08001174  4E56 0000 2198          link    A6,#0
+08001178  48E7 C000 2199          movem.l D0/D1,-(A7)
+0800117C  222E 0008 2200          move.l  8(A6),D1
+08001180  202E 000C 2201          move.l  12(A6),D0
+08001184  4A80      2202          tst.l   D0
+08001186  6A0A      2203          bpl.s   lmul_1
+08001188  4480      2204          neg.l   D0
+0800118A  4A81      2205          tst.l   D1
+0800118C  6A0A      2206          bpl.s   lmul_2
+0800118E  4481      2207          neg.l   D1
+08001190  600E      2208          bra.s   lmul_3
+                    2209   lmul_1:
+08001192  4A81      2210          tst.l   D1
+08001194  6A0A      2211          bpl.s   lmul_3
+08001196  4481      2212          neg.l   D1
+                    2213   lmul_2:
+08001198  6114      2214          bsr.s   domul
+0800119A  4481      2215          neg.l   D1
+0800119C  4080      2216          negx.l  D0
+0800119E  6002      2217          bra.s   lmul_4
+                    2218   lmul_3:
+080011A0  610C      2219          bsr.s   domul
+                    2220   lmul_4:
+080011A2  2D41 0008 2221          move.l  D1,8(A6)
+080011A6  4CDF 0003 2222          movem.l (A7)+,D0/D1
+080011AA  4E5E      2223          unlk    A6
+080011AC  4E75      2224          rts
+                    2225   domul:
+080011AE  0C81 0000 2226          cmpi.l  #$FFFF,D1
+080011B2  FFFF      
+080011B4  620C      2227          bhi.s   domul_1
+080011B6  0C80 0000 2228          cmpi.l  #$FFFF,D0
+080011BA  FFFF      
+080011BC  620E      2229          bhi.s   domul_2
+080011BE  C2C0      2230          mulu    D0,D1
+080011C0  4E75      2231          rts
+                    2232   domul_1:
+080011C2  0C80 0000 2233          cmpi.l  #$FFFF,D0
+080011C6  FFFF      
+080011C8  6218      2234          bhi.s   domul_4
+080011CA  6002      2235          bra.s   domul_3
+                    2236   domul_2
+080011CC  C141      2237          exg     D0,D1
+                    2238   domul_3:
+080011CE  2F02      2239          move.l  D2,-(A7)
+080011D0  2401      2240          move.l  D1,D2
+080011D2  4842      2241          swap    D2
+080011D4  C2C0      2242          mulu    D0,D1
+080011D6  C4C0      2243          mulu    D0,D2
+080011D8  4842      2244          swap    D2
+080011DA  4242      2245          clr.w   D2
+080011DC  D282      2246          add.l   D2,D1
+080011DE  241F      2247          move.l  (A7)+,D2
+080011E0  4E75      2248          rts
+                    2249   domul_4:
+080011E2  48E7 3000 2250          movem.l D2/D3,-(A7)
+080011E6  2401      2251          move.l  D1,D2
+080011E8  2601      2252          move.l  D1,D3
+080011EA  C2C0      2253          mulu    D0,D1
+080011EC  4842      2254          swap    D2
+080011EE  C4C0      2255          mulu    D0,D2
+080011F0  4840      2256          swap    D0
+080011F2  C6C0      2257          mulu    D0,D3
+080011F4  D483      2258          add.l   D3,D2
+080011F6  4842      2259          swap    D2
+080011F8  4242      2260          clr.w   D2
+080011FA  D282      2261          add.l   D2,D1
+080011FC  4CDF 000C 2262          movem.l (A7)+,D2/D3
+08001200  4E75      2263          rts
+                    2264   _strlen:
+08001202  206F 0004 2265          move.l    (4,A7),A0
+08001206  2248      2266          move.l    A0,A1
+                    2267   strlen_1:
+08001208  4A19      2268          tst.b     (A1)+
+0800120A  66FC      2269          bne       strlen_1
+0800120C  2009      2270          move.l    A1,D0
+0800120E  9088      2271          sub.l     A0,D0
+08001210  5380      2272          subq.l    #1,D0
+08001212  4E75      2273          rts
+                    2274   _putch:
+08001214  4E56 0000 2275          link      A6,#0
+08001218  48E7 2000 2276          movem.l   D2,-(A7)
+0800121C  242E 0008 2277          move.l    8(A6),D2
+08001220  0C82 0000 2278          cmp.l     #10,D2
+08001224  000A      
+08001226  660A      2279          bne.s     putch_1
+08001228  4878 000D 2280          pea       13
+0800122C  6100 EE82 2281          bsr       __putch
+08001230  584F      2282          addq.w    #4,A7
+                    2283   putch_1:
+08001232  2F02      2284          move.l    D2,-(A7)
+08001234  6100 EE7A 2285          bsr       __putch
+08001238  584F      2286          addq.w    #4,A7
+0800123A  2002      2287          move.l    D2,D0
+0800123C  4CDF 0004 2288          movem.l   (A7)+,D2
+08001240  4E5E      2289          unlk      A6
+08001242  4E75      2290          rts
+                    2291   _toupper:
+08001244  4E56 0000 2292          link      A6,#0
+08001248  48E7 2000 2293          movem.l   D2,-(A7)
+0800124C  242E 0008 2294          move.l    8(A6),D2
+08001250  0C82 0000 2295          cmp.l     #97,D2
+08001254  0061      
+08001256  6D0E      2296          blt.s     toupper_1
+08001258  0C82 0000 2297          cmp.l     #122,D2
+0800125C  007A      
+0800125E  6E06      2298          bgt.s     toupper_1
+08001260  C4BC 0000 2299          and.l     #95,D2
+08001264  005F      
+                    2300   toupper_1:
+08001266  2002      2301          move.l    D2,D0
+08001268  4CDF 0004 2302          movem.l   (A7)+,D2
+0800126C  4E5E      2303          unlk      A6
+0800126E  4E75      2304          rts
+                    2305   _strcpy:
+08001270  206F 0004 2306          move.l    (4,A7),A0
+08001274  226F 0008 2307          move.l    (8,A7),A1
+08001278  2008      2308          move.l    A0,D0
+                    2309   strcpy_1:
+0800127A  10D9      2310          move.b    (A1)+,(A0)+
+0800127C  66FC      2311          bne       strcpy_1
+0800127E  4E75      2312          rts
+                    2313          section   const
+08001280            2314                   align
+                    2315   
+                    2316   
+                    2317   @lab584~1_1:
+08001280  0D0A 456E 2318          dc.b      13,10,69,110,100,32,111,102,32,67,97,110,98
+08001284  6420 6F66 
+08001288  2043 616E 
+0800128C  62        
+0800128D  7573 2030 2319          dc.b      117,115,32,48,32,73,110,105,116,105,97,108,105
+08001291  2049 6E69 
+08001295  7469 616C 
+08001299  69        
+0800129A  7A61 7469 2320          dc.b      122,97,116,105,111,110,0
+0800129E  6F6E 00   
+                    2321   @lab584~1_2:
+080012A2  0D0A 456E 2322          dc.b      13,10,69,110,100,32,111,102,32,67,97,110,98
+080012A6  6420 6F66 
+080012AA  2043 616E 
+080012AE  62        
+080012AF  7573 2031 2323          dc.b      117,115,32,49,32,73,110,105,116,105,97,108,105
+080012B3  2049 6E69 
+080012B7  7469 616C 
+080012BB  69        
+080012BC  7A61 7469 2324          dc.b      122,97,116,105,111,110,0
+080012C0  6F6E 00   
+                    2325   @lab584~1_3:
+080012C4  0D0A 2043 2326          dc.b      13,10,32,67,65,78,66,85,83,32,48,58,32,82,101
+080012C8  414E 4255 
+080012CC  5320 303A 
+080012D0  2052 65   
+080012D3  6365 6976 2327          dc.b      99,101,105,118,101,32,66,117,102,102,101,114
+080012D7  6520 4275 
+080012DB  6666 6572 
+080012DF  2046 7261 2328          dc.b      32,70,114,97,109,101,32,73,110,102,111,58,32
+080012E3  6D65 2049 
+080012E7  6E66 6F3A 
+080012EB  20        
+080012EC  2578 00   2329          dc.b      37,120,0
+                    2330   @lab584~1_4:
+080012F0  0D0A 2043 2331          dc.b      13,10,32,67,65,78,66,85,83,32,48,58,82,101,99
+080012F4  414E 4255 
+080012F8  5320 303A 
+080012FC  5265 63   
+080012FF  6569 7665 2332          dc.b      101,105,118,101,32,66,117,102,102,101,114,32
+08001303  2042 7566 
+08001307  6665 7220 
+0800130B  313A 2025 2333          dc.b      49,58,32,37,120,0
+0800130F  7800      
+                    2334   @lab584~1_5:
+08001312  0D0A 2043 2335          dc.b      13,10,32,67,65,78,66,85,83,32,48,58,82,101,99
+08001316  414E 4255 
+0800131A  5320 303A 
+0800131E  5265 63   
+08001321  6569 7665 2336          dc.b      101,105,118,101,32,66,117,102,102,101,114,32
+08001325  2042 7566 
+08001329  6665 7220 
+0800132D  323A 2025 2337          dc.b      50,58,32,37,120,0
+08001331  7800      
+                    2338   @lab584~1_6:
+08001334  0D0A 2043 2339          dc.b      13,10,32,67,65,78,66,85,83,32,48,58,82,101,99
+08001338  414E 4255 
+0800133C  5320 303A 
+08001340  5265 63   
+08001343  6569 7665 2340          dc.b      101,105,118,101,32,66,117,102,102,101,114,32
+08001347  2042 7566 
+0800134B  6665 7220 
+0800134F  333A 2025 2341          dc.b      51,58,32,37,120,0
+08001353  7800      
+                    2342   @lab584~1_7:
+08001356  0D0A 2043 2343          dc.b      13,10,32,67,65,78,66,85,83,32,48,58,82,101,99
+0800135A  414E 4255 
+0800135E  5320 303A 
+08001362  5265 63   
+08001365  6569 7665 2344          dc.b      101,105,118,101,32,66,117,102,102,101,114,32
+08001369  2042 7566 
+0800136D  6665 7220 
+08001371  343A 2025 2345          dc.b      52,58,32,37,120,0
+08001375  7800      
+                    2346   @lab584~1_8:
+08001378  0D0A 2043 2347          dc.b      13,10,32,67,65,78,66,85,83,32,48,58,82,101,99
+0800137C  414E 4255 
+08001380  5320 303A 
+08001384  5265 63   
+08001387  6569 7665 2348          dc.b      101,105,118,101,32,66,117,102,102,101,114,32
+0800138B  2042 7566 
+0800138F  6665 7220 
+08001393  353A 2025 2349          dc.b      53,58,32,37,120,0
+08001397  7800      
+                    2350   @lab584~1_9:
+0800139A  0D0A 2043 2351          dc.b      13,10,32,67,65,78,66,85,83,32,48,58,82,101,99
+0800139E  414E 4255 
+080013A2  5320 303A 
+080013A6  5265 63   
+080013A9  6569 7665 2352          dc.b      101,105,118,101,32,66,117,102,102,101,114,32
+080013AD  2042 7566 
+080013B1  6665 7220 
+080013B5  363A 2025 2353          dc.b      54,58,32,37,120,0
+080013B9  7800      
+                    2354   @lab584~1_10:
+080013BC  0D0A 2043 2355          dc.b      13,10,32,67,65,78,66,85,83,32,48,58,82,101,99
+080013C0  414E 4255 
+080013C4  5320 303A 
+080013C8  5265 63   
+080013CB  6569 7665 2356          dc.b      101,105,118,101,32,66,117,102,102,101,114,32
+080013CF  2042 7566 
+080013D3  6665 7220 
+080013D7  373A 2025 2357          dc.b      55,58,32,37,120,0
+080013DB  7800      
+                    2358   @lab584~1_11:
+080013DE  0D0A 2043 2359          dc.b      13,10,32,67,65,78,66,85,83,32,48,58,82,101,99
+080013E2  414E 4255 
+080013E6  5320 303A 
+080013EA  5265 63   
+080013ED  6569 7665 2360          dc.b      101,105,118,101,32,66,117,102,102,101,114,32
+080013F1  2042 7566 
+080013F5  6665 7220 
+080013F9  383A 2025 2361          dc.b      56,58,32,37,120,0
+080013FD  7800      
+                    2362   @lab584~1_12:
+08001400  0D0A 2043 2363          dc.b      13,10,32,67,65,78,66,85,83,32,48,58,82,101,99
+08001404  414E 4255 
+08001408  5320 303A 
+0800140C  5265 63   
+0800140F  6569 7665 2364          dc.b      101,105,118,101,32,66,117,102,102,101,114,32
+08001413  2042 7566 
+08001417  6665 7220 
+0800141B  393A 2025 2365          dc.b      57,58,32,37,120,0
+0800141F  7800      
+                    2366   @lab584~1_13:
+08001422  0D0A 2043 2367          dc.b      13,10,32,67,65,78,66,85,83,32,48,58,82,101,99
+08001426  414E 4255 
+0800142A  5320 303A 
+0800142E  5265 63   
+08001431  6569 7665 2368          dc.b      101,105,118,101,32,66,117,102,102,101,114,32
+08001435  2042 7566 
+08001439  6665 7220 
+0800143D  3130 3A20 2369          dc.b      49,48,58,32,37,120,0
+08001441  2578 00   
+                    2370   @lab584~1_14:
+08001444  0D0A 2043 2371          dc.b      13,10,32,67,65,78,66,85,83,32,49,58,32,82,101
+08001448  414E 4255 
+0800144C  5320 313A 
+08001450  2052 65   
+08001453  6365 6976 2372          dc.b      99,101,105,118,101,32,66,117,102,102,101,114
+08001457  6520 4275 
+0800145B  6666 6572 
+0800145F  2033 2028 2373          dc.b      32,51,32,40,83,119,105,116,99,104,101,115,32
+08001463  5377 6974 
+08001467  6368 6573 
+0800146B  20        
+0800146C  5357 5B37 2374          dc.b      83,87,91,55,45,48,93,41,58,32,0
+08001470  2D30 5D29 
+08001474  3A20 00   
+                    2375   @lab584~1_15:
+08001478  3000      2376          dc.b      48,0
+                    2377   @lab584~1_16:
+0800147A  3100      2378          dc.b      49,0
+                    2379   @lab584~1_17:
+0800147C  0D0A 2043 2380          dc.b      13,10,32,67,65,78,66,85,83,32,49,58,32,65,68
+08001480  414E 4255 
+08001484  5320 313A 
+08001488  2041 44   
+0800148B  4320 5265 2381          dc.b      67,32,82,101,97,100,105,110,103,115,58,32,37
+0800148F  6164 696E 
+08001493  6773 3A20 
+08001497  25        
+08001498  7800      2382          dc.b      120,0
+                    2383   @lab584~1_18:
+0800149A  0D0A 2043 2384          dc.b      13,10,32,67,65,78,66,85,83,32,49,58,32,76,105
+0800149E  414E 4255 
+080014A2  5320 313A 
+080014A6  204C 69   
+080014A9  6768 7420 2385          dc.b      103,104,116,32,83,101,110,115,111,114,58,32
+080014AD  5365 6E73 
+080014B1  6F72 3A20 
+080014B5  2578 00   2386          dc.b      37,120,0
+                    2387   @lab584~1_19:
+080014B8  0D0A 2043 2388          dc.b      13,10,32,67,65,78,66,85,83,32,49,58,32,84,104
+080014BC  414E 4255 
+080014C0  5320 313A 
+080014C4  2054 68   
+080014C7  6572 6D69 2389          dc.b      101,114,109,105,115,116,111,114,58,32,37,120
+080014CB  7374 6F72 
+080014CF  3A20 2578 
+080014D3  00        2390          dc.b      0
+                    2391   @lab584~1_20:
+080014D4  0D0A 0D0A 2392          dc.b      13,10,13,10,45,45,45,45,32,67,65,78,66,85,83
+080014D8  2D2D 2D2D 
+080014DC  2043 414E 
+080014E0  4255 53   
+080014E3  2054 6573 2393          dc.b      32,84,101,115,116,32,45,45,45,45,13,10,0
+080014E7  7420 2D2D 
+080014EB  2D2D 0D0A 
+080014EF  00        
+                    2394   @lab584~1_21:
+080014F0  0D0A 00   2395          dc.b      13,10,0
+                    2396   @lab584~1_22:
+080014F4  0D0A 5469 2397          dc.b      13,10,84,105,109,101,114,32,73,110,105,116,105
+080014F8  6D65 7220 
+080014FC  496E 6974 
+08001500  69        
+08001501  616C 697A 2398          dc.b      97,108,105,122,101,100,0
+08001505  6564 00   
+                    2399          section   data
+08001508            2400                   align
+                    2401   
+                    2402   *********************************************************************************************************************************************************
+                    2403   * Section for Initialised Data (in theory should be copied to Ram at startup) but is part of program code as we copy whole program to ram at startup
+                    2404   ********************************************************************************************************************************************************
+                    2405   
+          0800 1508 2406   DataStart       equ       *
+08001508            2407   __ungetbuf:     ds.l      1                    ungetbuffer for stdio functions
+0800150C            2408   __allocp:       ds.l      1                    start of free memory block list
+08001510            2409   __heap:         ds.l      1                    begin of free memory
+                    2410   
+                    2411   
+                    2412   @itoa_1:
+08001514  2D32 3134 2413          dc.b      45,50,49,52,55,52,56,51,54,52,56,0
+08001518  3734 3833 
+0800151C  3634 3800 
+                    2414          section   bss
+08001520            2415                   align
+                    2416   
+          0800 1520 2417   DataEnd         equ       *                    this label will equate to the address of the last byte of global variable in it
+          0000 0018 2418   DataLength      equ       DataEnd-DataStart    length of data needed to copy to Ram on bootup
+                    2419   
+                    2420   *********************************************************************************************************
+                    2421   * Section for uninitialised Data which is set to zero, i.e. we should set this space to zero at starup
+                    2422   *********************************************************************************************************
+          0800 1520 2423   BssStart       equ       *
+                    2424   
+                    2425   _count:
+08001520            2426          ds.b      4
+                    2427   _ADC_val:
+08001524            2428          ds.b      4
+                    2429   _Photo_val:
+08001528            2430          ds.b      4
+                    2431   _Therm_val:
+0800152C            2432          ds.b      4
+                    2433          section   heap
+08001530            2434                  align
+                    2435   
+          0800 1530 2436   BssEnd         equ       *
+          0000 0010 2437   BssLength      equ       BssEnd-BssStart       length of zeroed data needed to copy to Ram on bootup
+                    2438   
+                    2439   *********************************************************************************************************
+                    2440   * Section for Heap
+                    2441   *********************************************************************************************************
+                    2442   
+          0800 1530 2443   heap           equ       *
+08001530            2444                  align
+          0800 0000
+
+Assembly errors: 0
